@@ -1,0 +1,88 @@
+name: Full Project Automatisation de la gestion des vulnérabilités dans les pipelines MLops.
+
+# -------------------------------------------------------------
+# Déclencheurs CI
+# Le workflow s'exécute automatiquement sur :
+#   - chaque push dans la branche develop
+#   - chaque pull request ciblant la branche develop
+# -------------------------------------------------------------
+on:
+  push:
+    branches:
+      - Develop
+  pull_request:
+    branches:
+      - Develop
+
+jobs:
+  # =============================================================
+  #                        JOB : CodeScan
+  # Analyse statique (SAST) du code Python avec Bandit
+  # =============================================================
+  CodeScan:
+    name: Code Security Scan (Bandit)
+    runs-on: ubuntu-latest   # Machine Linux fournie par GitHub
+
+    steps:
+
+      # ---------------------------------------------------------
+      # 1. Récupération du code source du dépôt
+      # ---------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------
+      # 2. Génération d'un horodatage unique
+      #    Utilisé pour nommer les dossiers et rapports afin
+      #    d'éviter toute collision entre différentes exécutions.
+      #    Format : YYYY-MM-DD_HH-MM-SS
+      # ---------------------------------------------------------
+      - name: Generate Timestamp
+        run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
+
+      # ---------------------------------------------------------
+      # 3. Configuration de l'environnement Python
+      #    Installation d'une version stable et supportée
+      # ---------------------------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ---------------------------------------------------------
+      # 4. Installation de Bandit (outil SAST pour Python)
+      #    Mise à jour de pip + installation du scanner.
+      # ---------------------------------------------------------
+      - name: Install Bandit
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit
+
+      # ---------------------------------------------------------
+      # 5. Exécution du scan Bandit
+      #    - Création d'un dossier unique basé sur l'horodatage
+      #    - Export du rapport JSON dans ce dossier
+      #
+      #    Exemple final :
+      #    reports/bandit/2025-02-01_14-23-58/bandit-report.json
+      # ---------------------------------------------------------
+      - name: Run Bandit Scan
+        run: |
+          mkdir -p "reports/bandit/${TIMESTAMP}"
+          bandit -r . -f json -o "reports/bandit/${TIMESTAMP}/bandit-report.json"
+
+      # ---------------------------------------------------------
+      # 6. Upload du rapport comme artefact
+      #    (Bonne pratique CI/CD : pas de commit dans le repo)
+      #
+      #    L'artefact sera nommé :
+      #       bandit-report-YYYY-MM-DD_HH-MM-SS
+      #
+      #    et téléchargeable dans l'UI GitHub Actions.
+      # ---------------------------------------------------------
+      - name: Upload Bandit Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report-${{ env.TIMESTAMP }}
+          path: reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json
+          retention-days: 30  # Durée de rétention configurable
