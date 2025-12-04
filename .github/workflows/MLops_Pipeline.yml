@@ -140,14 +140,29 @@ jobs:
               data = json.load(f)
 
           table = []
-          for item in data:
-              table.append([
-                  item.get("name"),
-                  item.get("version"),
-                  item.get("fix_versions"),
-                  item.get("id"),
-                  item.get("description"),
-              ])
+
+          # Gestion des différentes structures JSON de pip-audit
+          if isinstance(data, list):
+              for item in data:
+                  if isinstance(item, dict):
+                      table.append([
+                          item.get("name", ""),
+                          item.get("version", ""),
+                          item.get("fix_versions", ""),
+                          item.get("id", ""),
+                          item.get("description", ""),
+                      ])
+          elif isinstance(data, dict) and "vulnerabilities" in data:
+              for item in data["vulnerabilities"]:
+                  table.append([
+                      item.get("name", ""),
+                      item.get("version", ""),
+                      item.get("fix_versions", ""),
+                      item.get("id", ""),
+                      item.get("description", ""),
+                  ])
+          else:
+              table.append([str(data)] * 5)
 
           if table:
               print("\nDependency Security Scan Report:\n")
