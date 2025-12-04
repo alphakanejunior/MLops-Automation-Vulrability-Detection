@@ -1,5 +1,11 @@
 name: Full Project Automatisation de la gestion des vulnérabilités dans les pipelines MLops
 
+# -------------------------------------------------------------
+# Déclencheurs CI
+# Le workflow s'exécute automatiquement sur :
+#   - chaque push dans la branche develop
+#   - chaque pull request ciblant la branche develop
+# -------------------------------------------------------------
 on:
   push:
     branches:
@@ -18,22 +24,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Checkout du code
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2️⃣ Génération d'un horodatage unique
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
+      # 3️⃣ Setup Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # 4️⃣ Installation des dépendances pour Bandit
       - name: Install Bandit and dependencies
         run: |
           python -m pip install --upgrade pip
           pip install bandit tabulate
 
+      # 5️⃣ Scan Bandit et export JSON
       - name: Run Bandit Scan
         run: |
           echo "🔍 Starting Bandit scan..."
@@ -41,6 +52,7 @@ jobs:
           bandit -r . -f json -o "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" || echo "⚠️ Bandit found vulnerabilities, but workflow continues."
         continue-on-error: true
 
+      # 6️⃣ Upload du rapport Bandit
       - name: Upload Bandit Report
         uses: actions/upload-artifact@v4
         with:
@@ -48,6 +60,7 @@ jobs:
           path: reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json
           retention-days: 30
 
+      # 7️⃣ Affichage lisible Bandit
       - name: Display Bandit Report as Table
         run: |
           python - <<EOF
@@ -93,31 +106,38 @@ jobs:
     needs: CodeScan
 
     steps:
+      # 1️⃣ Checkout du code
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2️⃣ Génération d'un horodatage précis
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
+      # 3️⃣ Setup Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # 4️⃣ Installation des dépendances du projet
       - name: Install project dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Install pip-audit and tabulate
+      # 5️⃣ Installation de pip-audit
+      - name: Install pip-audit
         run: pip install pip-audit tabulate
 
+      # 6️⃣ Exécution du scan pip-audit et export JSON
       - name: Run Dependency Scan
         run: |
           echo "🔍 Running pip-audit..."
           mkdir -p "reports/dependency/${{ env.TIMESTAMP }}"
           pip-audit --format=json -o "reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json" || echo "⚠️ Vulnerabilities detected"
 
+      # 7️⃣ Upload du rapport JSON comme artefact
       - name: Upload Dependency Report
         uses: actions/upload-artifact@v4
         with:
@@ -125,6 +145,7 @@ jobs:
           path: reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json
           retention-days: 30
 
+      # 8️⃣ Affichage lisible du rapport dans la console
       - name: Display Dependency Report
         run: |
           python - <<EOF
@@ -141,28 +162,20 @@ jobs:
 
           table = []
 
-          # Gestion des différentes structures JSON de pip-audit
-          if isinstance(data, list):
-              for item in data:
-                  if isinstance(item, dict):
-                      table.append([
-                          item.get("name", ""),
-                          item.get("version", ""),
-                          item.get("fix_versions", ""),
-                          item.get("id", ""),
-                          item.get("description", ""),
-                      ])
-          elif isinstance(data, dict) and "vulnerabilities" in data:
-              for item in data["vulnerabilities"]:
+          # Traitement correct du JSON pip-audit
+          if isinstance(data, dict) and "dependencies" in data:
+              for pkg in data["dependencies"]:
+                  vulns = pkg.get("vulns", [])
                   table.append([
-                      item.get("name", ""),
-                      item.get("version", ""),
-                      item.get("fix_versions", ""),
-                      item.get("id", ""),
-                      item.get("description", ""),
+                      pkg.get("name", ""),
+                      pkg.get("version", ""),
+                      ",".join(pkg.get("fix_versions", [])) if pkg.get("fix_versions") else "",
+                      ",".join([v.get("id","") for v in vulns]) if vulns else "",
+                      ",".join([v.get("description","") for v in vulns]) if vulns else "",
                   ])
           else:
-              table.append([str(data)] * 5)
+              # Cas fallback si structure JSON inattendue
+              table.append([str(data)]*5)
 
           if table:
               print("\nDependency Security Scan Report:\n")
