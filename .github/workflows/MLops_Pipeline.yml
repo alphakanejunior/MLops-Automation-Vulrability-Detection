@@ -86,3 +86,7 @@ jobs:
           name: bandit-report-${{ env.TIMESTAMP }}
           path: reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json
           retention-days: 30  # Durée de rétention configurable
+
+
+    # ==============================================================================
+
