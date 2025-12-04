@@ -68,9 +68,13 @@ jobs:
       # ---------------------------------------------------------
       - name: Run Bandit Scan
         run: |
-          mkdir -p "reports/bandit/${TIMESTAMP}"
-          bandit -r . -f json -o "reports/bandit/${TIMESTAMP}/bandit-report.json"
+            echo "🔍 Starting Bandit scan..."
+            # Création du dossier horodaté pour stocker le rapport
+            mkdir -p "reports/bandit/${{ env.TIMESTAMP }}"
+            # Exécution de Bandit avec sortie JSON
+            bandit -r . -f json -o "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" || echo "⚠️ Bandit found vulnerabilities, but workflow continues."
         continue-on-error: true
+
       # ---------------------------------------------------------
       # 6. Upload du rapport comme artefact
       #    (Bonne pratique CI/CD : pas de commit dans le repo)
