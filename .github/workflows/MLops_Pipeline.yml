@@ -186,7 +186,7 @@ jobs:
         shell: bash
         env:
           PYTHONUNBUFFERED: 1
-  # =============================================================
+   # =============================================================
   # Job 3 : ModelScan
   # Analyse des modèles ML pour intégrité et vulnérabilités
   # =============================================================
@@ -196,44 +196,44 @@ jobs:
     needs: DependencyScan
 
     steps:
-      # 1️⃣ Checkout du code et modèles
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Génération d'un horodatage unique
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      # 3️⃣ Setup Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 4️⃣ Installation des dépendances nécessaires pour l'analyse
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pandas joblib onnx h5py
 
-      # 5️⃣ Analyse des fichiers modèles
       - name: Scan ML Models
         run: |
           mkdir -p "reports/models/${{ env.TIMESTAMP }}"
-          for model in $(find model/ -type f -name "*.pkl" -o -name "*.joblib" -o -name "*.onnx" -o -name "*.h5"); do
-              echo "🔍 Scanning $model..."
-              # Vérification du hash SHA256
-              sha256sum "$model" >> "reports/models/${{ env.TIMESTAMP }}/model-hashes.txt"
-              # Optionnel : analyse simple pour code malveillant
-              if grep -qE "(os\.system|subprocess|eval|exec)" "$model"; then
-                  echo "⚠️ Potential code execution in $model" >> "reports/model/${{ env.TIMESTAMP }}/model-issues.txt"
-              fi
-          done || echo "✅ Model scan completed"
+          touch "reports/models/${{ env.TIMESTAMP }}/model-hashes.txt"
+          touch "reports/models/${{ env.TIMESTAMP }}/model-issues.txt"
 
-      # 6️⃣ Upload des rapports
+          if [ -d model ]; then
+            for model in $(find model/ -type f -name "*.pkl" -o -name "*.joblib" -o -name "*.onnx" -o -name "*.h5"); do
+              echo "🔍 Scanning $model..."
+              sha256sum "$model" >> "reports/models/${{ env.TIMESTAMP }}/model-hashes.txt"
+              # Analyse simple pour code malveillant
+              if grep -qE "(os\.system|subprocess|eval|exec)" "$model"; then
+                echo "⚠️ Potential code execution in $model" >> "reports/models/${{ env.TIMESTAMP }}/model-issues.txt"
+              fi
+            done
+          else
+            echo "⚠️ Folder 'model/' does not exist."
+          fi
+
       - name: Upload Model Scan Report
         uses: actions/upload-artifact@v4
         with:
           name: model-scan-${{ env.TIMESTAMP }}
-          path: reports/model/${{ env.TIMESTAMP }}
+          path: reports/models/${{ env.TIMESTAMP }}
           retention-days: 30
