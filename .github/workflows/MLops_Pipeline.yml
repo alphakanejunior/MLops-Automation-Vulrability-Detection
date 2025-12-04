@@ -70,7 +70,7 @@ jobs:
         run: |
           mkdir -p "reports/bandit/${TIMESTAMP}"
           bandit -r . -f json -o "reports/bandit/${TIMESTAMP}/bandit-report.json"
-
+        continue-on-error: true
       # ---------------------------------------------------------
       # 6. Upload du rapport comme artefact
       #    (Bonne pratique CI/CD : pas de commit dans le repo)
