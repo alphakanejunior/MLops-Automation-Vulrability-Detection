@@ -220,13 +220,13 @@ jobs:
       - name: Scan ML Models
         run: |
           mkdir -p "reports/models/${{ env.TIMESTAMP }}"
-          for model in $(find models/ -type f -name "*.pkl" -o -name "*.joblib" -o -name "*.onnx" -o -name "*.h5"); do
+          for model in $(find model/ -type f -name "*.pkl" -o -name "*.joblib" -o -name "*.onnx" -o -name "*.h5"); do
               echo "🔍 Scanning $model..."
               # Vérification du hash SHA256
               sha256sum "$model" >> "reports/models/${{ env.TIMESTAMP }}/model-hashes.txt"
               # Optionnel : analyse simple pour code malveillant
               if grep -qE "(os\.system|subprocess|eval|exec)" "$model"; then
-                  echo "⚠️ Potential code execution in $model" >> "reports/models/${{ env.TIMESTAMP }}/model-issues.txt"
+                  echo "⚠️ Potential code execution in $model" >> "reports/model/${{ env.TIMESTAMP }}/model-issues.txt"
               fi
           done || echo "✅ Model scan completed"
 
@@ -235,5 +235,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: model-scan-${{ env.TIMESTAMP }}
-          path: reports/models/${{ env.TIMESTAMP }}
+          path: reports/model/${{ env.TIMESTAMP }}
           retention-days: 30
