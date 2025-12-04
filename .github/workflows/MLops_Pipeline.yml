@@ -79,35 +79,35 @@ jobs:
       # ---------------------------------------------------------
       - name: Display Bandit Report as Table
         run: |
-          python - <<EOF
-          import json, os
-          from tabulate import tabulate
+            python - <<EOF
+            import json, os
+            from tabulate import tabulate
 
-          report_file = f"reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json"
-          if not os.path.exists(report_file):
-              print("❌ Bandit report not found.")
-              exit(1)
+            report_file = f"reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json"
+            if not os.path.exists(report_file):
+                print("❌ Bandit report not found.")
+                exit(1)
 
-          with open(report_file) as f:
-              data = json.load(f)
+            with open(report_file) as f:
+                data = json.load(f)
 
-          table = []
-          for item in data.get("results", []):
-              table.append([
-                  item["filename"],
-                  item["line_number"],
-                  item["issue_severity"],
-                  item["issue_confidence"],
-                  item["test_name"],
-                  item["issue_text"]
-              ])
+            table = []
+            for item in data.get("results", []):
+                table.append([
+                    item["filename"],
+                    item["line_number"],
+                    item["issue_severity"],
+                    item["issue_confidence"],
+                    item["test_name"],
+                    item["issue_text"]
+                ])
 
-          if table:
-              print("\nBandit Security Scan Report:\n")
-              print(tabulate(table, headers=["File","Line","Severity","Confidence","Test","Description"], tablefmt="github"))
-          else:
-              print("✅ No issues found by Bandit.")
-          EOF
+            if table:
+                print("\nBandit Security Scan Report:\n")
+                print(tabulate(table, headers=["File","Line","Severity","Confidence","Test","Description"], tablefmt="grid"))
+            else:
+                print("✅ No issues found by Bandit.")
+            EOF
         shell: bash
         env:
-          PYTHONUNBUFFERED: 1
+            PYTHONUNBUFFERED: 1
