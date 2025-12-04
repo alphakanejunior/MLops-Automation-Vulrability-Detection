@@ -1,4 +1,4 @@
-name: Full Project Automatisation de la gestion des vulnérabilités dans les pipelines MLops.
+name: Full Project Automatisation de la gestion des vulnérabilités dans les pipelines MLops
 
 # -------------------------------------------------------------
 # Déclencheurs CI
@@ -21,28 +21,23 @@ jobs:
   # =============================================================
   CodeScan:
     name: Code Security Scan (Bandit)
-    runs-on: ubuntu-latest   # Machine Linux fournie par GitHub
+    runs-on: ubuntu-latest
 
     steps:
-
       # ---------------------------------------------------------
-      # 1. Récupération du code source du dépôt
+      # 1. Récupération du code source
       # ---------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------
       # 2. Génération d'un horodatage unique
-      #    Utilisé pour nommer les dossiers et rapports afin
-      #    d'éviter toute collision entre différentes exécutions.
-      #    Format : YYYY-MM-DD_HH-MM-SS
       # ---------------------------------------------------------
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
       # ---------------------------------------------------------
       # 3. Configuration de l'environnement Python
-      #    Installation d'une version stable et supportée
       # ---------------------------------------------------------
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -50,47 +45,69 @@ jobs:
           python-version: "3.11"
 
       # ---------------------------------------------------------
-      # 4. Installation de Bandit (outil SAST pour Python)
-      #    Mise à jour de pip + installation du scanner.
+      # 4. Installation des dépendances Python pour Bandit
       # ---------------------------------------------------------
-      - name: Install Bandit
+      - name: Install Bandit and dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install bandit
+          pip install bandit tabulate
 
       # ---------------------------------------------------------
-      # 5. Exécution du scan Bandit
-      #    - Création d'un dossier unique basé sur l'horodatage
-      #    - Export du rapport JSON dans ce dossier
-      #
-      #    Exemple final :
-      #    reports/bandit/2025-02-01_14-23-58/bandit-report.json
+      # 5. Exécution du scan Bandit avec sortie JSON
       # ---------------------------------------------------------
       - name: Run Bandit Scan
         run: |
-            echo "🔍 Starting Bandit scan..."
-            # Création du dossier horodaté pour stocker le rapport
-            mkdir -p "reports/bandit/${{ env.TIMESTAMP }}"
-            # Exécution de Bandit avec sortie JSON
-            bandit -r . -f json -o "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" || echo "⚠️ Bandit found vulnerabilities, but workflow continues."
+          echo "🔍 Starting Bandit scan..."
+          # Création du dossier horodaté
+          mkdir -p "reports/bandit/${{ env.TIMESTAMP }}"
+          # Scan et export JSON
+          bandit -r . -f json -o "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" || echo "⚠️ Bandit found vulnerabilities, but workflow continues."
         continue-on-error: true
 
       # ---------------------------------------------------------
-      # 6. Upload du rapport comme artefact
-      #    (Bonne pratique CI/CD : pas de commit dans le repo)
-      #
-      #    L'artefact sera nommé :
-      #       bandit-report-YYYY-MM-DD_HH-MM-SS
-      #
-      #    et téléchargeable dans l'UI GitHub Actions.
+      # 6. Upload du rapport JSON comme artefact
       # ---------------------------------------------------------
       - name: Upload Bandit Report
         uses: actions/upload-artifact@v4
         with:
           name: bandit-report-${{ env.TIMESTAMP }}
           path: reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json
-          retention-days: 30  # Durée de rétention configurable
+          retention-days: 30
 
+      # ---------------------------------------------------------
+      # 7. Affichage du rapport sous forme de tableau lisible
+      # ---------------------------------------------------------
+      - name: Display Bandit Report as Table
+        run: |
+          python - <<EOF
+          import json, os
+          from tabulate import tabulate
 
-    # ==============================================================================
+          report_file = f"reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json"
+          if not os.path.exists(report_file):
+              print("❌ Bandit report not found.")
+              exit(1)
 
+          with open(report_file) as f:
+              data = json.load(f)
+
+          table = []
+          for item in data.get("results", []):
+              table.append([
+                  item["filename"],
+                  item["line_number"],
+                  item["issue_severity"],
+                  item["issue_confidence"],
+                  item["test_name"],
+                  item["issue_text"]
+              ])
+
+          if table:
+              print("\nBandit Security Scan Report:\n")
+              print(tabulate(table, headers=["File","Line","Severity","Confidence","Test","Description"], tablefmt="github"))
+          else:
+              print("✅ No issues found by Bandit.")
+          EOF
+        shell: bash
+        env:
+          PYTHONUNBUFFERED: 1
