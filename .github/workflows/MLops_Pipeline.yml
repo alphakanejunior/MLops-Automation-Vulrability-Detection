@@ -206,8 +206,7 @@ jobs:
       - name: Install ModelScan (Fork)
         run: |
           python -m pip install --upgrade pip
-          pip install "git+https://github.com/SamirAbdelkhalek/ModelScan.git"
-
+          pip install modelscan
       - name: Check model directory
         run: |
           echo "Checking model directory..."
