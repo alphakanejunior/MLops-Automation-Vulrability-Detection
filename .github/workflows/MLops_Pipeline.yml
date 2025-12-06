@@ -226,3 +226,68 @@ jobs:
           name: modelscan-report-${{ env.TIMESTAMP }}
           path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
           retention-days: 30
+
+  # =============================================================
+  # Job 4 : Scan des conteneurs Docker
+  # =============================================================
+  ContainerScan:
+    name: ContainerScan (Trivy)
+    runs-on: ubuntu-latest
+    needs: ModelScan
+
+    steps:
+      # 1️⃣ Checkout du code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2️⃣ Génération d'un horodatage cohérent
+      - name: Generate Timestamp
+        run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
+
+      # 3️⃣ Installation de Trivy
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.57.0
+
+      # 4️⃣ Télécharger la DB de vulnérabilités
+      - name: Download Trivy DB
+        run: trivy image --download-db-only
+
+      # 5️⃣ Lister les images Docker locales
+      - name: List Docker images
+        run: docker images --format "{{.Repository}}:{{.Tag}}" > images.txt
+
+      # 6️⃣ Créer le répertoire de rapports
+      - name: Create Reports Folder
+        run: mkdir -p "reports/container/${{ env.TIMESTAMP }}"
+
+      # 7️⃣ Scanner toutes les images Docker
+      - name: Scan Docker Images
+        run: |
+          while read image; do
+            IMAGE_SAFE=$(echo $image | tr '/:' '_')
+            OUTPUT_FILE="reports/container/${{ env.TIMESTAMP }}/scan-${IMAGE_SAFE}.json"
+            echo "🔍 Scanning $image -> $OUTPUT_FILE"
+            trivy image --format json --ignore-unfixed --vuln-type os,library --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image"
+          done < images.txt
+
+      # 8️⃣ Upload des rapports JSON comme artefacts
+      - name: Upload ContainerScan Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-scan-${{ env.TIMESTAMP }}
+          path: reports/container/${{ env.TIMESTAMP }}/
+          retention-days: 30
+
+      # 9️⃣ Affichage lisible des résultats dans la console (optionnel)
+      - name: Display Scan Summary
+        run: |
+          for file in reports/container/${{ env.TIMESTAMP }}/*.json; do
+            echo "==== $file ===="
+            jq '.Results[] | {Target: .Target, Vulnerabilities: .Vulnerabilities | length}' "$file"
+          done
+        shell: bash
+        env:
+          PYTHONUNBUFFERED: 1
