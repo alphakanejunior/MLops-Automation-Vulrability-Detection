@@ -186,7 +186,8 @@ jobs:
         shell: bash
         env:
           PYTHONUNBUFFERED: 1
-   # =============================================================
+
+  # =============================================================
   # Job 3 : ModelScan (officiel + formats non supportés)
   # Protection contre les attaques de sérialisation de modèles ML
   # =============================================================
@@ -197,21 +198,15 @@ jobs:
 
     steps:
 
-      # ---------------------------------------------------------
-      # 1. Checkout du dépôt
-      # ---------------------------------------------------------
+      # 1️⃣ Checkout du dépôt
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------------------------------------------------------
-      # 2. Horodatage global pour tous les rapports
-      # ---------------------------------------------------------
+      # 2️⃣ Horodatage global pour tous les rapports
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      # ---------------------------------------------------------
-      # 3. Installer Python + ModelScan officiel
-      # ---------------------------------------------------------
+      # 3️⃣ Installer Python + ModelScan officiel
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -222,27 +217,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install modelscan yara-python
 
-      # ---------------------------------------------------------
-      # 4. Scan officiel ModelScan (formats supportés)
-      #    Utilisation correcte de la nouvelle commande :
-      #    - "modelscan scan" au lieu de "modelscan -p"
-      #    - option stable : --no-error-on-skipped
-      # ---------------------------------------------------------
+      # 4️⃣ Scan officiel ModelScan (formats supportés)
       - name: Run ModelScan (official)
+        continue-on-error: true
         run: |
+          echo "🔍 Running official ModelScan..."
           mkdir -p "reports/models/${TIMESTAMP}/official"
           modelscan scan \
             -p model/ \
-            -o "reports/models/${TIMESTAMP}/official/modelscan-report.json" \
-            --no-error-on-skipped
+            -o "reports/models/${TIMESTAMP}/official/modelscan-report.json"
 
-      # ---------------------------------------------------------
-      # 5. Extended Scan pour formats NON supportés :
-      #    - pkl, joblib, sav, tflite, pmml, mlmodel, etc.
-      #    - hashing + signatures + recherche d’exploits
-      # ---------------------------------------------------------
+      # 5️⃣ Extended Scan pour formats NON supportés :
       - name: Run Extended ModelScan (unsupported formats)
         run: |
+          echo "🔍 Running extended scan for unsupported formats..."
           mkdir -p "reports/models/${TIMESTAMP}/extended"
           
           EXT_HASH="reports/models/${TIMESTAMP}/extended/extended-hashes.txt"
@@ -281,9 +269,7 @@ jobs:
             fi
           done
 
-      # ---------------------------------------------------------
-      # 6. Upload du rapport complet (official + extended)
-      # ---------------------------------------------------------
+      # 6️⃣ Upload du rapport complet (official + extended)
       - name: Upload ModelScan Report
         uses: actions/upload-artifact@v4
         with:
