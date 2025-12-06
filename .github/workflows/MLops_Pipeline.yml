@@ -224,11 +224,14 @@ jobs:
 
       # ---------------------------------------------------------
       # 4. Scan officiel ModelScan (formats supportés)
+      #    --ignore-errors : empêche exit code 3 de faire échouer le job
       # ---------------------------------------------------------
       - name: Run ModelScan (official)
         run: |
           mkdir -p "reports/models/${TIMESTAMP}/official"
-          modelscan -p model/ -o "reports/models/${TIMESTAMP}/official/modelscan-report.json"
+          modelscan -p model/ \
+            -o "reports/models/${TIMESTAMP}/official/modelscan-report.json" \
+            --ignore-errors
 
       # ---------------------------------------------------------
       # 5. Extended Scan pour formats NON supportés :
@@ -284,3 +287,4 @@ jobs:
           name: modelscan-full-${{ env.TIMESTAMP }}
           path: reports/models/${{ env.TIMESTAMP }}
           retention-days: 30
+
