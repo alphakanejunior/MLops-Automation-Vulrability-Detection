@@ -186,6 +186,7 @@ jobs:
         shell: bash
         env:
           PYTHONUNBUFFERED: 1
+          
   # =============================================================
   # Job 3 : ModelScan officiel seulement
   # Analyse des modèles ML avec ModelScan (rapport JSON)
