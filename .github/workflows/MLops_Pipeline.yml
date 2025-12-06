@@ -227,9 +227,9 @@ jobs:
           path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
           retention-days: 30
 
-  # =============================================================
+  # ----------------------------
   # Job 4 : Scan des conteneurs Docker
-  # =============================================================
+  # ----------------------------
   ContainerScan:
     name: ContainerScan (Trivy)
     runs-on: ubuntu-latest
@@ -238,10 +238,10 @@ jobs:
     steps:
       # 1️⃣ Checkout du code
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       # 2️⃣ Génération d'un horodatage cohérent
-      - name: Generate Timestamp
+      - name: Set Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
       # 3️⃣ Installation de Trivy
@@ -251,43 +251,68 @@ jobs:
           sudo apt-get install -y curl
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.57.0
 
-      # 4️⃣ Télécharger la DB de vulnérabilités
+      # 4️⃣ Connexion au GitHub Container Registry
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GHCR_PAT }}" > token.txt
+          cat token.txt | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # 5️⃣ Télécharger la base de vulnérabilités
       - name: Download Trivy DB
         run: trivy image --download-db-only
 
-      # 5️⃣ Lister les images Docker locales
+      # 6️⃣ Lister les images Docker locales
       - name: List Docker images
         run: docker images --format "{{.Repository}}:{{.Tag}}" > images.txt
 
-      # 6️⃣ Créer le répertoire de rapports
-      - name: Create Reports Folder
-        run: mkdir -p "reports/container/${{ env.TIMESTAMP }}"
-
-      # 7️⃣ Scanner toutes les images Docker
-      - name: Scan Docker Images
+      # 7️⃣ Scan des images Docker et génération de rapports JSON
+      - name: Scan Docker images
         run: |
+          REPORT_DIR="reports/container/${{ env.TIMESTAMP }}"
+          mkdir -p "$REPORT_DIR"
           while read image; do
             IMAGE_SAFE=$(echo $image | tr '/:' '_')
-            OUTPUT_FILE="reports/container/${{ env.TIMESTAMP }}/scan-${IMAGE_SAFE}.json"
+            OUTPUT_FILE="$REPORT_DIR/scan-${IMAGE_SAFE}.json"
             echo "🔍 Scanning $image -> $OUTPUT_FILE"
             trivy image --format json --ignore-unfixed --vuln-type os,library --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image"
           done < images.txt
 
-      # 8️⃣ Upload des rapports JSON comme artefacts
-      - name: Upload ContainerScan Reports
+      # 8️⃣ Upload des rapports JSON comme artefact GitHub
+      - name: Upload Container Scan Reports
         uses: actions/upload-artifact@v4
         with:
           name: container-scan-${{ env.TIMESTAMP }}
           path: reports/container/${{ env.TIMESTAMP }}/
           retention-days: 30
 
-      # 9️⃣ Affichage lisible des résultats dans la console (optionnel)
+      # 9️⃣ Affichage lisible des résultats dans la console
       - name: Display Scan Summary
         run: |
-          for file in reports/container/${{ env.TIMESTAMP }}/*.json; do
-            echo "==== $file ===="
-            jq '.Results[] | {Target: .Target, Vulnerabilities: .Vulnerabilities | length}' "$file"
-          done
+          REPORT_DIR="reports/container/${{ env.TIMESTAMP }}"
+          python3 - <<EOF
+          import os, json, glob
+          from tabulate import tabulate
+
+          report_files = glob.glob(os.path.join("${REPORT_DIR}", "*.json"))
+          if not report_files:
+              print("⚠️ Aucun fichier JSON trouvé dans", "${REPORT_DIR}")
+          else:
+              table = []
+              for file in report_files:
+                  with open(file) as f:
+                      data = json.load(f)
+                      for result in data.get("Results", []):
+                          vulnerabilities = result.get("Vulnerabilities") or []
+                          table.append([
+                              result.get("Target", "Unknown"),
+                              len(vulnerabilities)
+                          ])
+              if table:
+                  print("\nDocker Container Scan Summary:\n")
+                  print(tabulate(table, headers=["Target Image","Vuln Count"], tablefmt="grid"))
+              else:
+                  print("✅ Aucun problème détecté dans les images scannées.")
+          EOF
         shell: bash
         env:
           PYTHONUNBUFFERED: 1
