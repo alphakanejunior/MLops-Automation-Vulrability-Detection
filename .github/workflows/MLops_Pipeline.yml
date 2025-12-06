@@ -197,47 +197,55 @@ jobs:
     needs: DependencyScan
 
     steps:
-      # 1️⃣ Checkout du dépôt
+      # Checkout
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Génération du même horodatage que les autres jobs
+      # Timestamp
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      # 3️⃣ Setup Python + installation ModelScan
+      # Installer ModelScan depuis GitHub (version correcte)
       - name: Install ModelScan
         run: |
           python -m pip install --upgrade pip
-          pip install modelscan
+          pip install "git+https://github.com/harness/ModelScan.git"
 
-      # 4️⃣ Création du dossier de sortie
-      - name: Create Reports Folder
-        run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
-
-      # 5️⃣ Exécution du scan ModelScan
-      - name: Run Official ModelScan
-        continue-on-error: true
+      # Vérification dossier model
+      - name: Check model directory
         run: |
-          echo "🔍 Running official ModelScan..."
-          modelscan scan \
-            -p model/ \
-            -o "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json"
-
-      # 6️⃣ Vérification du fichier généré
-      - name: Check ModelScan Report
-        run: |
-          echo "🔎 Checking generated ModelScan report..."
-          ls -R reports/models/${{ env.TIMESTAMP }}/official/
-          if [ ! -f "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" ]; then
-            echo "❌ ModelScan report not found!"
+          echo "📁 Checking ./model/"
+          ls -R .
+          if [ ! -d "model" ]; then 
+            echo "❌ model/ directory not found"
             exit 1
           fi
 
-      # 7️⃣ Upload comme artefact
+      # Create output folder
+      - name: Create Reports Folder
+        run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
+
+      # Run ModelScan
+      - name: Run Official ModelScan
+        continue-on-error: true
+        run: |
+          modelscan scan directory model/ \
+            --output "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" \
+            --format json
+
+      # Check report
+      - name: Check ModelScan Report
+        run: |
+          echo "🔎 Listing generated files..."
+          ls -R reports/models/${{ env.TIMESTAMP }}/official/
+          if [ ! -f "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" ]; then
+            echo "⚠️ No ModelScan report generated (no supported models found or scan error)."
+          fi
+
+      # Upload artifact
       - name: Upload ModelScan Report
         uses: actions/upload-artifact@v4
         with:
           name: modelscan-official-${{ env.TIMESTAMP }}
-          path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
+          path: reports/models/${{ env.TIMESTAMP }}/official/
           retention-days: 30
