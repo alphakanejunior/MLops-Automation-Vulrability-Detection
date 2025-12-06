@@ -209,7 +209,7 @@ jobs:
       - name: Install ModelScan
         run: |
           python -m pip install --upgrade pip
-          pip install modelscan
+          pip install modelscan==0.8.7
 
       - name: Create Reports Folder
         run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
