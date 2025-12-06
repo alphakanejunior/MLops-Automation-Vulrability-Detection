@@ -186,7 +186,7 @@ jobs:
         shell: bash
         env:
           PYTHONUNBUFFERED: 1
-  # =============================================================
+   # =============================================================
   # Job 3 : ModelScan (officiel + formats non supportés)
   # Protection contre les attaques de sérialisation de modèles ML
   # =============================================================
@@ -224,14 +224,17 @@ jobs:
 
       # ---------------------------------------------------------
       # 4. Scan officiel ModelScan (formats supportés)
-      #    --ignore-errors : empêche exit code 3 de faire échouer le job
+      #    Utilisation correcte de la nouvelle commande :
+      #    - "modelscan scan" au lieu de "modelscan -p"
+      #    - option stable : --no-error-on-skipped
       # ---------------------------------------------------------
       - name: Run ModelScan (official)
         run: |
           mkdir -p "reports/models/${TIMESTAMP}/official"
-          modelscan -p model/ \
+          modelscan scan \
+            -p model/ \
             -o "reports/models/${TIMESTAMP}/official/modelscan-report.json" \
-            --ignore-errors
+            --no-error-on-skipped
 
       # ---------------------------------------------------------
       # 5. Extended Scan pour formats NON supportés :
@@ -248,7 +251,7 @@ jobs:
           touch "$EXT_HASH"
           touch "$EXT_ISSUES"
 
-          # Cherche tous les formats NON supportés par ModelScan
+          # Cherche tous les formats NON supportés par ModelScan officiel
           MODELS=$(find model/ -type f \( \
               -name "*.pkl" -o \
               -name "*.joblib" -o \
@@ -269,10 +272,10 @@ jobs:
           for file in $MODELS; do
             echo "Scanning unsupported model: $file"
 
-            # Hash SHA256
+            # Hash SHA256 pour intégrité
             sha256sum "$file" >> "$EXT_HASH"
 
-            # Détection patterns dangereux
+            # Détection patterns dangereux dans fichiers binaires
             if grep -aE "(os\.system|subprocess|Popen|eval|exec|__reduce__|__globals__|pickle\.|marshal\.|base64|decode)" "$file" >/dev/null 2>&1; then
               echo "⚠️ THREAT: Suspicious pattern in $file" >> "$EXT_ISSUES"
             fi
@@ -287,4 +290,3 @@ jobs:
           name: modelscan-full-${{ env.TIMESTAMP }}
           path: reports/models/${{ env.TIMESTAMP }}
           retention-days: 30
-
