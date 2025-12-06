@@ -188,11 +188,11 @@ jobs:
           PYTHONUNBUFFERED: 1
           
   # =============================================================
-  # Job 3 : ModelScan officiel seulement
-  # Analyse des modèles ML avec ModelScan (rapport JSON)
+  # Job 3 : ModelScan officiel corrigé
+  # Analyse des modèles ML avec ModelScan
   # =============================================================
   ModelScan:
-    name: Model Serialization Security Scan (Fork Version)
+    name: Model Serialization Security Scan (Official)
     runs-on: ubuntu-latest
     needs: DependencyScan
 
@@ -203,15 +203,16 @@ jobs:
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      - name: Install ModelScan (Fork)
+      - name: Install ModelScan
         run: |
           python -m pip install --upgrade pip
           pip install modelscan
+
       - name: Check model directory
         run: |
           echo "Checking model directory..."
           ls -R .
-          if [ ! -d "model" ]; then 
+          if [ ! -d "model" ]; then
             echo "❌ model/ directory not found"
             exit 0
           fi
@@ -219,12 +220,12 @@ jobs:
       - name: Create Reports Folder
         run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
 
+      # 🔥 ModelScan n'a plus d'option --output ni --format
       - name: Run ModelScan
         continue-on-error: true
         run: |
-          modelscan scan directory model/ \
-            --output "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" \
-            --format json
+          echo "🔍 Running ModelScan..."
+          modelscan scan directory model/ > "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt" 2>&1 || true
 
       - name: Upload ModelScan Report
         uses: actions/upload-artifact@v4
@@ -232,3 +233,4 @@ jobs:
           name: modelscan-report-${{ env.TIMESTAMP }}
           path: reports/models/${{ env.TIMESTAMP }}/official/
           retention-days: 30
+  
