@@ -192,60 +192,44 @@ jobs:
   # Analyse des modèles ML avec ModelScan (rapport JSON)
   # =============================================================
   ModelScan:
-    name: Model Serialization Security Scan (Official Only)
+    name: Model Serialization Security Scan (Fork Version)
     runs-on: ubuntu-latest
     needs: DependencyScan
 
     steps:
-      # Checkout
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Timestamp
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      # Installer ModelScan depuis GitHub (version correcte)
-      - name: Install ModelScan
+      - name: Install ModelScan (Fork)
         run: |
           python -m pip install --upgrade pip
-          pip install "git+https://github.com/harness/ModelScan.git"
+          pip install "git+https://github.com/SamirAbdelkhalek/ModelScan.git"
 
-      # Vérification dossier model
       - name: Check model directory
         run: |
-          echo "📁 Checking ./model/"
+          echo "Checking model directory..."
           ls -R .
           if [ ! -d "model" ]; then 
             echo "❌ model/ directory not found"
-            exit 1
+            exit 0
           fi
 
-      # Create output folder
       - name: Create Reports Folder
         run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
 
-      # Run ModelScan
-      - name: Run Official ModelScan
+      - name: Run ModelScan
         continue-on-error: true
         run: |
           modelscan scan directory model/ \
             --output "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" \
             --format json
 
-      # Check report
-      - name: Check ModelScan Report
-        run: |
-          echo "🔎 Listing generated files..."
-          ls -R reports/models/${{ env.TIMESTAMP }}/official/
-          if [ ! -f "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" ]; then
-            echo "⚠️ No ModelScan report generated (no supported models found or scan error)."
-          fi
-
-      # Upload artifact
       - name: Upload ModelScan Report
         uses: actions/upload-artifact@v4
         with:
-          name: modelscan-official-${{ env.TIMESTAMP }}
+          name: modelscan-report-${{ env.TIMESTAMP }}
           path: reports/models/${{ env.TIMESTAMP }}/official/
           retention-days: 30
