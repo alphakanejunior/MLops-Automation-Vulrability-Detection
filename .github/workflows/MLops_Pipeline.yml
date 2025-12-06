@@ -186,10 +186,9 @@ jobs:
         shell: bash
         env:
           PYTHONUNBUFFERED: 1
-
   # =============================================================
-  # Job 3 : ModelScan (officiel + formats non supportés)
-  # Protection contre les attaques de sérialisation de modèles ML
+  # Job 3 : ModelScan (optimisé)
+  # Analyse des modèles ML (formats supportés + non supportés)
   # =============================================================
   ModelScan:
     name: Model Serialization Security Scan
@@ -197,7 +196,6 @@ jobs:
     needs: DependencyScan
 
     steps:
-
       # 1️⃣ Checkout du dépôt
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -206,71 +204,57 @@ jobs:
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      # 3️⃣ Installer Python + ModelScan officiel
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install ModelScan + extra libs
+      # 3️⃣ Installer Python et ModelScan
+      - name: Set up Python & Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install modelscan yara-python
 
-      # 4️⃣ Scan officiel ModelScan (formats supportés)
-      - name: Run ModelScan (official)
+      # 4️⃣ Créer tous les dossiers nécessaires
+      - name: Create Reports Folders
+        run: |
+          mkdir -p "reports/models/${TIMESTAMP}/official"
+          mkdir -p "reports/models/${TIMESTAMP}/extended"
+
+      # 5️⃣ Scan officiel ModelScan (formats supportés)
+      - name: Run Official ModelScan
         continue-on-error: true
         run: |
           echo "🔍 Running official ModelScan..."
-          mkdir -p "reports/models/${TIMESTAMP}/official"
           modelscan scan \
             -p model/ \
             -o "reports/models/${TIMESTAMP}/official/modelscan-report.json"
 
-      # 5️⃣ Extended Scan pour formats NON supportés :
-      - name: Run Extended ModelScan (unsupported formats)
+      # 6️⃣ Scan étendu pour formats non supportés
+      - name: Run Extended Scan (unsupported formats)
         run: |
           echo "🔍 Running extended scan for unsupported formats..."
-          mkdir -p "reports/models/${TIMESTAMP}/extended"
-          
           EXT_HASH="reports/models/${TIMESTAMP}/extended/extended-hashes.txt"
           EXT_ISSUES="reports/models/${TIMESTAMP}/extended/extended-threats.txt"
 
-          touch "$EXT_HASH"
-          touch "$EXT_ISSUES"
+          touch "$EXT_HASH" "$EXT_ISSUES"
 
-          # Cherche tous les formats NON supportés par ModelScan officiel
+          # Formats non supportés
           MODELS=$(find model/ -type f \( \
-              -name "*.pkl" -o \
-              -name "*.joblib" -o \
-              -name "*.sav" -o \
-              -name "*.mlmodel" -o \
-              -name "*.tflite" -o \
-              -name "*.pmml" -o \
-              -name "*.json" -o \
-              -name "*.cfg" -o \
-              -name "*.dnn" \
+              -name "*.pkl" -o -name "*.joblib" -o -name "*.sav" -o \
+              -name "*.mlmodel" -o -name "*.tflite" -o -name "*.pmml" -o \
+              -name "*.json" -o -name "*.cfg" -o -name "*.dnn" \
           \))
 
           if [ -z "$MODELS" ]; then
             echo "No unsupported model formats found." >> "$EXT_HASH"
-            exit 0
+          else
+            for file in $MODELS; do
+              echo "Scanning unsupported model: $file"
+              sha256sum "$file" >> "$EXT_HASH"
+              if grep -aE "(os\.system|subprocess|Popen|eval|exec|__reduce__|__globals__|pickle\.|marshal\.|base64|decode)" "$file" >/dev/null 2>&1; then
+                echo "⚠️ THREAT: Suspicious pattern in $file" >> "$EXT_ISSUES"
+              fi
+            done
           fi
 
-          for file in $MODELS; do
-            echo "Scanning unsupported model: $file"
-
-            # Hash SHA256 pour intégrité
-            sha256sum "$file" >> "$EXT_HASH"
-
-            # Détection patterns dangereux dans fichiers binaires
-            if grep -aE "(os\.system|subprocess|Popen|eval|exec|__reduce__|__globals__|pickle\.|marshal\.|base64|decode)" "$file" >/dev/null 2>&1; then
-              echo "⚠️ THREAT: Suspicious pattern in $file" >> "$EXT_ISSUES"
-            fi
-          done
-
-      # 6️⃣ Upload du rapport complet (official + extended)
-      - name: Upload ModelScan Report
+      # 7️⃣ Upload du rapport complet
+      - name: Upload ModelScan Reports
         uses: actions/upload-artifact@v4
         with:
           name: modelscan-full-${{ env.TIMESTAMP }}
