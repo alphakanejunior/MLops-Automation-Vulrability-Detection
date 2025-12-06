@@ -191,6 +191,9 @@ jobs:
   # Job 3 : ModelScan officiel corrigé
   # Analyse des modèles ML avec ModelScan
   # =============================================================
+  # =============================================================
+  # Job 3 : ModelScan officiel correctement configuré
+  # =============================================================
   ModelScan:
     name: Model Serialization Security Scan (Official)
     runs-on: ubuntu-latest
@@ -208,24 +211,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install modelscan
 
-      - name: Check model directory
-        run: |
-          echo "Checking model directory..."
-          ls -R .
-          if [ ! -d "model" ]; then
-            echo "❌ model/ directory not found"
-            exit 0
-          fi
-
       - name: Create Reports Folder
         run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
 
-      # 🔥 ModelScan n'a plus d'option --output ni --format
       - name: Run ModelScan
         continue-on-error: true
         run: |
           echo "🔍 Running ModelScan..."
-          modelscan scan directory model/ > "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt" 2>&1 || true
+          modelscan -p model/ > "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt" 2>&1 || true
 
       - name: Upload ModelScan Report
         uses: actions/upload-artifact@v4
@@ -233,4 +226,3 @@ jobs:
           name: modelscan-report-${{ env.TIMESTAMP }}
           path: reports/models/${{ env.TIMESTAMP }}/official/
           retention-days: 30
-  
