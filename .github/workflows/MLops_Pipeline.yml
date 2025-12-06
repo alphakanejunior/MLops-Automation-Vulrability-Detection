@@ -194,13 +194,15 @@ jobs:
     name: Model Serialization Security Scan (Official Only)
     runs-on: ubuntu-latest
     needs: DependencyScan
+    env:
+      TIMESTAMP: ${{ github.run_id }}  # fallback sûr si horodatage exact non nécessaire
 
     steps:
       # 1️⃣ Checkout du dépôt
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Horodatage global pour les rapports
+      # 2️⃣ Génération d'un horodatage pour les rapports
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
@@ -212,7 +214,7 @@ jobs:
 
       # 4️⃣ Créer le dossier du rapport
       - name: Create Reports Folder
-        run: mkdir -p "reports/models/${TIMESTAMP}/official"
+        run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
 
       # 5️⃣ Scan officiel ModelScan (JSON)
       - name: Run Official ModelScan
@@ -221,9 +223,19 @@ jobs:
           echo "🔍 Running official ModelScan..."
           modelscan scan \
             -p model/ \
-            -o "reports/models/${TIMESTAMP}/official/modelscan-report.json"
+            -o "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json"
 
-      # 6️⃣ Upload du rapport JSON
+      # 6️⃣ Vérification que le fichier existe
+      - name: Check ModelScan Report
+        run: |
+          echo "🔎 Checking generated ModelScan report..."
+          ls -R reports/models/${{ env.TIMESTAMP }}/official/
+          if [ ! -f "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" ]; then
+            echo "❌ ModelScan report not found!"
+            exit 1
+          fi
+
+      # 7️⃣ Upload du rapport JSON
       - name: Upload ModelScan Report
         uses: actions/upload-artifact@v4
         with:
