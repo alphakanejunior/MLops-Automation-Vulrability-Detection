@@ -273,27 +273,14 @@ jobs:
 
 #--------------------------------------------------------------------------------------
       
-      # 6.1️⃣ Image vulnérable pour test (Trivy Official Test Image)
-      - name: Pull Trivy vulnerable test image
+            # 6️⃣ Pull des images vulnérables de test
+      - name: Pull vulnerable test images
         run: |
-          echo "🔄 Pulling vulnerable test image..."
-          docker pull aquasecurity/trivy-ci-test:latest
-          echo "✔ Pulled: aquasecurity/trivy-ci-test:latest"
-
-      # 6.2️⃣ Scan de l'image vulnérable pour valider le pipeline
-      - name: Scan vulnerable test image
-        run: |
-          REPORT_DIR="reports/container/${TIMESTAMP}/vulnerable-test"
-          mkdir -p "$REPORT_DIR"
-
-          OUTPUT_FILE="${REPORT_DIR}/scan-trivy-ci-test.json"
-          echo "🔍 Scanning vulnerable image: aquasecurity/trivy-ci-test:latest"
-
-          trivy image --format json --ignore-unfixed \
-            --severity CRITICAL,HIGH,MEDIUM,LOW \
-            -o "$OUTPUT_FILE" aquasecurity/trivy-ci-test:latest || echo "⚠️ Scan failed"
-
-          echo "✔ Vulnerable test report saved: $OUTPUT_FILE"
+          echo "🔄 Pulling vulnerable test images..."
+          docker pull vulnerables/web-dvwa || echo "❌ Failed to pull DVWA"
+          docker pull bkimminich/juice-shop || echo "❌ Failed to pull Juice Shop"
+          docker pull vulnerables/cve-2014-6271 || echo "❌ Failed to pull Shellshock image"
+      
 #--------------------------------------------------------------------------------------
 
       # 7️⃣ Scan des Dockerfiles du projet
