@@ -269,7 +269,7 @@ jobs:
       # 7️⃣ Liste des images Docker locales
       - name: List Docker images
         run: |
-          docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" > images.txt
+          docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" || true | tee images.txt
           echo "📦 Images détectées :"
           cat images.txt || echo "(aucune image)"
 
