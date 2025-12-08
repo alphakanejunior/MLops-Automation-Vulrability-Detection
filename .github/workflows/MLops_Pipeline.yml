@@ -240,51 +240,54 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Génération de l'horodatage
+      # 2️⃣ Génération d'un horodatage global
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      # 3️⃣ Installation de Trivy (standalone)
+      # 3️⃣ Installation de Trivy (mode standalone)
       - name: Install Trivy
         run: |
           sudo apt-get update -y
           sudo apt-get install -y curl
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-          | sudo sh -s -- -b /usr/local/bin v0.57.0
+            | sudo sh -s -- -b /usr/local/bin v0.57.0
 
-      # 4️⃣ Login GHCR
+      # 4️⃣ Connexion au registre GitHub (GHCR)
       - name: Login to GitHub Container Registry
         run: |
           echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io \
             -u "${{ github.actor }}" --password-stdin
 
-      # 5️⃣ Télécharger la DB Trivy
+      # 5️⃣ Téléchargement de la base Trivy
       - name: Download Trivy DB
         run: trivy image --download-db-only
 
-      # 6️⃣ Lister les images Docker locales
-      - name: List local Docker images
-        id: listimages
+      # 6️⃣ Pull ou build des images nécessaires avant le scan
+      - name: Ensure Docker images are present
         run: |
-          docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" > images.txt || true
+          IMAGES=("ghcr.io/${{ github.repository }}/my-app:latest" "ubuntu:22.04")  # ← Liste tes images ici
+          for image in "${IMAGES[@]}"; do
+            echo "🔄 Pulling or verifying: $image"
+            docker pull "$image" || echo "⚠️ Could not pull $image, skipping..."
+          done
+
+      # 7️⃣ List local Docker images
+      - name: List local Docker images
+        run: |
+          docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" > images.txt
           echo "Images detected:"
           cat images.txt || echo "No images found."
 
-          if [ ! -s images.txt ]; then
-            echo "empty=true" >> $GITHUB_OUTPUT
-          else
-            echo "empty=false" >> $GITHUB_OUTPUT
-          fi
-
-      # 7️⃣ Scan de toutes les images Docker
+      # 8️⃣ Scan de toutes les images Docker
       - name: Scan all Docker images
-        if: steps.listimages.outputs.empty == 'false'
+        if: success() && hashFiles('images.txt') != ''
         run: |
           REPORT_DIR="reports/container/${TIMESTAMP}"
           mkdir -p "$REPORT_DIR"
 
           while read image; do
             echo "🔍 Scanning: $image"
+
             SAFE_NAME=$(echo "$image" | tr '/:' '_')
             OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
 
@@ -298,9 +301,8 @@ jobs:
             echo "✔ Report saved: $OUTPUT_FILE"
           done < images.txt
 
-      # 8️⃣ Upload artefacts
+      # 9️⃣ Upload des rapports comme artefact
       - name: Upload ContainerScan Reports
-        if: steps.listimages.outputs.empty == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: container-scan-${{ env.TIMESTAMP }}
