@@ -226,10 +226,10 @@ jobs:
           name: modelscan-report-${{ env.TIMESTAMP }}
           path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
           retention-days: 30
-
-# ----------------------------
-# Job 4 : Scan des conteneurs Docker (Trivy)
-# ----------------------------
+          
+  # ----------------------------
+  # Job 4 : Scan complet des conteneurs (Dockerfiles, images locales et registry) avec Trivy
+  # ----------------------------
   ContainerScan:
     name: ContainerScan (Trivy)
     runs-on: ubuntu-latest
@@ -252,7 +252,7 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
             | sudo sh -s -- -b /usr/local/bin v0.57.0
 
-      # 4️⃣ Connexion au registre GitHub (GHCR)
+      # 4️⃣ Connexion au registre GitHub Container Registry (GHCR)
       - name: Login to GitHub Container Registry
         run: |
           echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io \
@@ -271,46 +271,62 @@ jobs:
             docker pull "$image" || echo "⚠️ Could not pull $image, skipping..."
           done
 
-      # 7️⃣ Liste des images locales
-      - name: List local Docker images
+      # 7️⃣ Scan des Dockerfiles du projet
+      - name: Scan Dockerfiles
         run: |
-          docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" > images.txt
-          echo "Images detected:"
-          cat images.txt || echo "No images found."
-
-      # 8️⃣ Scan de toutes les images Docker
-      - name: Scan all Docker images
-        if: success() && hashFiles('images.txt') != ''
-        run: |
-          REPORT_DIR="reports/container/${TIMESTAMP}"
+          REPORT_DIR="reports/container/${TIMESTAMP}/dockerfiles"
           mkdir -p "$REPORT_DIR"
-
-          while read image; do
-            echo "🔍 Scanning: $image"
-            SAFE_NAME=$(echo "$image" | tr '/:' '_')
+          find . -name 'Dockerfile*' | while read df; do
+            echo "🔍 Scanning Dockerfile: $df"
+            SAFE_NAME=$(echo "$df" | tr '/:' '_')
             OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
 
-            trivy image \
-              --format json \
-              --ignore-unfixed \
-              --vuln-type os,library \
-              --severity CRITICAL,HIGH,MEDIUM,LOW \
-              -o "$OUTPUT_FILE" "$image" || echo "⚠️ Scan failed for $image"
+            trivy config --format json -o "$OUTPUT_FILE" "$df" || echo "⚠️ Scan failed for $df"
+            echo "✔ Report saved: $OUTPUT_FILE"
+          done
 
+      # 8️⃣ Scan des images locales
+      - name: Scan local Docker images
+        run: |
+          REPORT_DIR="reports/container/${TIMESTAMP}/local-images"
+          mkdir -p "$REPORT_DIR"
+          docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" > images.txt
+          while read image; do
+            echo "🔍 Scanning local image: $image"
+            SAFE_NAME=$(echo "$image" | tr '/:' '_')
+            OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
+            trivy image --format json --ignore-unfixed --vuln-type os,library \
+              --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image" || echo "⚠️ Scan failed for $image"
             echo "✔ Report saved: $OUTPUT_FILE"
           done < images.txt
 
-      # 9️⃣ Affichage lisible résumé des vulnérabilités
-      - name: Display Vulnerability Summary
-        if: success() && hashFiles('images.txt') != ''
+      # 9️⃣ Scan des images dans le registre GHCR
+      - name: Scan registry Docker images
         run: |
-          echo "📊 ContainerScan Summary:"
-          for file in reports/container/${TIMESTAMP}/*.json; do
-            echo "🔹 File: $file"
-            jq -r '.Results[] | "\(.Target) → OS vulns: \(.Vulnerabilities | length)"' "$file" || echo "No vulnerabilities"
+          REPORT_DIR="reports/container/${TIMESTAMP}/registry-images"
+          mkdir -p "$REPORT_DIR"
+          REGISTRY_IMAGES=("ghcr.io/${{ github.repository }}/my-app:latest")  # Liste des images dans le registre
+          for image in "${REGISTRY_IMAGES[@]}"; do
+            echo "🔍 Scanning registry image: $image"
+            SAFE_NAME=$(echo "$image" | tr '/:' '_')
+            OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
+            trivy image --format json --ignore-unfixed --vuln-type os,library \
+              --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image" || echo "⚠️ Scan failed for $image"
+            echo "✔ Report saved: $OUTPUT_FILE"
           done
 
-      # 🔟 Upload des rapports comme artefact
+      # 🔟 Affichage lisible résumé des vulnérabilités
+      - name: Display Vulnerability Summary
+        run: |
+          echo "📊 ContainerScan Summary:"
+          for file in reports/container/${TIMESTAMP}/**/*.json; do
+            echo "🔹 File: $file"
+            jq -r '
+              .Results[]? | "\(.Target) → OS vulns: \(.Vulnerabilities // [] | length), Library vulns: \(.Vulnerabilities // [] | map(select(.Type=="library")) | length)"
+            ' "$file" || echo "No vulnerabilities"
+          done
+
+      # 1️⃣1️⃣ Upload des rapports comme artefact
       - name: Upload ContainerScan Reports
         uses: actions/upload-artifact@v4
         with:
