@@ -226,7 +226,7 @@ jobs:
           name: modelscan-report-${{ env.TIMESTAMP }}
           path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
           retention-days: 30
-          
+
   # ----------------------------
   # Job 4 : Scan complet des conteneurs (Dockerfiles, images locales et registry) avec Trivy
   # ----------------------------
@@ -270,6 +270,31 @@ jobs:
             echo "🔄 Pulling or verifying: $image"
             docker pull "$image" || echo "⚠️ Could not pull $image, skipping..."
           done
+
+#--------------------------------------------------------------------------------------
+      
+      # 6.1️⃣ Image vulnérable pour test (Trivy Official Test Image)
+      - name: Pull Trivy vulnerable test image
+        run: |
+          echo "🔄 Pulling vulnerable test image..."
+          docker pull aquasecurity/trivy-ci-test:latest
+          echo "✔ Pulled: aquasecurity/trivy-ci-test:latest"
+
+      # 6.2️⃣ Scan de l'image vulnérable pour valider le pipeline
+      - name: Scan vulnerable test image
+        run: |
+          REPORT_DIR="reports/container/${TIMESTAMP}/vulnerable-test"
+          mkdir -p "$REPORT_DIR"
+
+          OUTPUT_FILE="${REPORT_DIR}/scan-trivy-ci-test.json"
+          echo "🔍 Scanning vulnerable image: aquasecurity/trivy-ci-test:latest"
+
+          trivy image --format json --ignore-unfixed \
+            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            -o "$OUTPUT_FILE" aquasecurity/trivy-ci-test:latest || echo "⚠️ Scan failed"
+
+          echo "✔ Vulnerable test report saved: $OUTPUT_FILE"
+#--------------------------------------------------------------------------------------
 
       # 7️⃣ Scan des Dockerfiles du projet
       - name: Scan Dockerfiles
