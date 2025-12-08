@@ -271,7 +271,7 @@ jobs:
             docker pull "$image" || echo "⚠️ Could not pull $image, skipping..."
           done
 
-      # 7️⃣ List local Docker images
+      # 7️⃣ Liste des images locales
       - name: List local Docker images
         run: |
           docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" > images.txt
@@ -287,7 +287,6 @@ jobs:
 
           while read image; do
             echo "🔍 Scanning: $image"
-
             SAFE_NAME=$(echo "$image" | tr '/:' '_')
             OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
 
@@ -296,12 +295,22 @@ jobs:
               --ignore-unfixed \
               --vuln-type os,library \
               --severity CRITICAL,HIGH,MEDIUM,LOW \
-              -o "$OUTPUT_FILE" "$image"
+              -o "$OUTPUT_FILE" "$image" || echo "⚠️ Scan failed for $image"
 
             echo "✔ Report saved: $OUTPUT_FILE"
           done < images.txt
 
-      # 9️⃣ Upload des rapports comme artefact
+      # 9️⃣ Affichage lisible résumé des vulnérabilités
+      - name: Display Vulnerability Summary
+        if: success() && hashFiles('images.txt') != ''
+        run: |
+          echo "📊 ContainerScan Summary:"
+          for file in reports/container/${TIMESTAMP}/*.json; do
+            echo "🔹 File: $file"
+            jq -r '.Results[] | "\(.Target) → OS vulns: \(.Vulnerabilities | length)"' "$file" || echo "No vulnerabilities"
+          done
+
+      # 🔟 Upload des rapports comme artefact
       - name: Upload ContainerScan Reports
         uses: actions/upload-artifact@v4
         with:
