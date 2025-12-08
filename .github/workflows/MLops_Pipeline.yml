@@ -231,114 +231,40 @@ jobs:
   # Job 4 : Scan des conteneurs Docker
   # ----------------------------
   ContainerScan:
-    name: Docker Container Security Scan (Trivy)
-    runs-on: ubuntu-latest
-    needs: ModelScan    # ou DependencyScan selon ton workflow
+      name: ContainerScan (Trivy)
+      runs-on: ubuntu-latest
+      needs: ModelScan
+    
+      steps:
+        - name: Checkout repository
+          uses: actions/checkout@v3
+    
+        - name: Set Date
+          run: echo "DATE=$(date +%m.%d.%Y)" >> $GITHUB_ENV
+    
+        - name: Install Trivy (no docker install!)
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y curl
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.57.0
+    
+        - name: Log in to GitHub Container Registry
+          run: |
+            echo "${{ secrets.GHCR_PAT }}" > token.txt
+            cat token.txt | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-    steps:
-      # 1️⃣ Checkout du code
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      # 2️⃣ Génération d’un horodatage
-      - name: Set Timestamp
-        run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
-
-      # 3️⃣ Installation de tabulate (utilisé dans le résumé Python)
-      - name: Install tabulate
-        run: pip install tabulate
-
-      # 4️⃣ Installation de Trivy
-      - name: Install Trivy
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sudo sh -s -- -b /usr/local/bin v0.57.0
-
-      # 5️⃣ Connexion à GHCR (si tu veux scanner tes images privées)
-      - name: Log in to GitHub Container Registry
-        run: |
-          echo "${{ secrets.GHCR_PAT }}" > token.txt
-          cat token.txt | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      # 6️⃣ Mise à jour de la base de vulnérabilités Trivy
-      - name: Download Trivy DB
-        run: trivy image --download-db-only
-
-      # 7️⃣ Liste des images Docker locales
-      - name: List Docker images
-        run: |
-          docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" || true | tee images.txt
-          echo "📦 Images détectées :"
-          cat images.txt || echo "(aucune image)"
-
-      # 8️⃣ Gestion du cas où il n’y a AUCUNE image locale
-      - name: Check if there are images
-        run: |
-          if [ ! -s images.txt ]; then
-            echo "⚠️ Aucune image Docker locale trouvée."
-            REPORT_DIR="reports/container/${{ env.TIMESTAMP }}"
-            mkdir -p "$REPORT_DIR"
-            echo "{}" > "$REPORT_DIR/no-images-found.json"
-            exit 0
-          fi
-
-      # 9️⃣ Scan avec Trivy et génération des rapports JSON
-      - name: Scan Docker images
-        run: |
-          REPORT_DIR="reports/container/${{ env.TIMESTAMP }}"
-          mkdir -p "$REPORT_DIR"
-          while read image; do
-            IMAGE_SAFE=$(echo $image | tr '/:' '_')
-            OUTPUT_FILE="$REPORT_DIR/scan-${IMAGE_SAFE}.json"
-            echo "🔍 Scanning $image -> $OUTPUT_FILE"
-            trivy image \
-              --format json \
-              --ignore-unfixed \
-              --vuln-type os,library \
-              --severity CRITICAL,HIGH,MEDIUM,LOW \
-              -o "$OUTPUT_FILE" \
-              "$image"
-          done < images.txt
-
-      # 🔟 Upload des rapports JSON
-      - name: Upload Container Scan Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: container-scan-${{ env.TIMESTAMP }}
-          path: reports/container/${{ env.TIMESTAMP }}/
-          retention-days: 30
-
-      # 1️⃣1️⃣ Résumé clair dans la console
-      - name: Display Scan Summary
-        run: |
-          REPORT_DIR="reports/container/${{ env.TIMESTAMP }}"
-          python3 - <<EOF
-          import os, json, glob
-          from tabulate import tabulate
-
-          report_files = glob.glob(os.path.join("${REPORT_DIR}", "*.json"))
-          if not report_files:
-              print("⚠️ Aucun fichier JSON trouvé dans", "${REPORT_DIR}")
-          else:
-              table = []
-              for file in report_files:
-                  with open(file) as f:
-                      data = json.load(f)
-                      for result in data.get("Results", []):
-                          vulns = result.get("Vulnerabilities") or []
-                          table.append([
-                              result.get("Target", os.path.basename(file)),
-                              len(vulns)
-                          ])
-
-              if table:
-                  print("\n🛡️ Docker Container Scan Summary:\n")
-                  print(tabulate(table, headers=["Target Image","Vulnerability Count"], tablefmt="grid"))
-              else:
-                  print("✅ Aucun problème détecté dans les images scannées.")
-          EOF
-        shell: bash
-        env:
-          PYTHONUNBUFFERED: 1
+        - name: Download Trivy DB
+          run: trivy image --download-db-only
+    
+        - name: List Docker images
+          run: docker images --format "{{.Repository}}:{{.Tag}}" > images.txt
+    
+        - name: Scan all Docker images
+          run: |
+            mkdir -p "GitHub Actions/ContainerScan"
+            while read image; do
+              IMAGE_SAFE=$(echo $image | tr '/:' '_')
+              OUTPUT_FILE="GitHub Actions/ContainerScan/scan-${IMAGE_SAFE}-${DATE}.json"
+              echo "Scanning $image -> $OUTPUT_FILE"
+              trivy image --format json --ignore-unfixed --vuln-type os,library --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image"
+            done < images.txt
