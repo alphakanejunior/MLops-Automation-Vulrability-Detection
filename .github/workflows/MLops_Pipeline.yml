@@ -227,44 +227,82 @@ jobs:
           path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
           retention-days: 30
 
-  # ----------------------------
-  # Job 4 : Scan des conteneurs Docker
-  # ----------------------------
+# ----------------------------
+# Job 4 : Scan des conteneurs Docker (Trivy)
+# ----------------------------
   ContainerScan:
-      name: ContainerScan (Trivy)
-      runs-on: ubuntu-latest
-      needs: ModelScan
-    
-      steps:
-        - name: Checkout repository
-          uses: actions/checkout@v3
-    
-        - name: Set Date
-          run: echo "DATE=$(date +%m.%d.%Y)" >> $GITHUB_ENV
-    
-        - name: Install Trivy (no docker install!)
-          run: |
-            sudo apt-get update
-            sudo apt-get install -y curl
-            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.57.0
-    
-        - name: Log in to GitHub Container Registry
-          run: |
-            echo "${{ secrets.GHCR_PAT }}" > token.txt
-            cat token.txt | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+    name: ContainerScan (Trivy)
+    runs-on: ubuntu-latest
+    needs: ModelScan
 
-        - name: Download Trivy DB
-          run: trivy image --download-db-only
-    
-        - name: List Docker images
-          run: docker images --format "{{.Repository}}:{{.Tag}}" > images.txt
-    
-        - name: Scan all Docker images
-          run: |
-            mkdir -p "GitHub Actions/ContainerScan"
-            while read image; do
-              IMAGE_SAFE=$(echo $image | tr '/:' '_')
-              OUTPUT_FILE="GitHub Actions/ContainerScan/scan-${IMAGE_SAFE}-${DATE}.json"
-              echo "Scanning $image -> $OUTPUT_FILE"
-              trivy image --format json --ignore-unfixed --vuln-type os,library --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image"
-            done < images.txt
+    steps:
+      # 1️⃣ Checkout du dépôt
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2️⃣ Génération de l'horodatage
+      - name: Generate Timestamp
+        run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
+
+      # 3️⃣ Installation de Trivy (standalone)
+      - name: Install Trivy
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y curl
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+          | sudo sh -s -- -b /usr/local/bin v0.57.0
+
+      # 4️⃣ Login GHCR
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io \
+            -u "${{ github.actor }}" --password-stdin
+
+      # 5️⃣ Télécharger la DB Trivy
+      - name: Download Trivy DB
+        run: trivy image --download-db-only
+
+      # 6️⃣ Lister les images Docker locales
+      - name: List local Docker images
+        id: listimages
+        run: |
+          docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" > images.txt || true
+          echo "Images detected:"
+          cat images.txt || echo "No images found."
+
+          if [ ! -s images.txt ]; then
+            echo "empty=true" >> $GITHUB_OUTPUT
+          else
+            echo "empty=false" >> $GITHUB_OUTPUT
+          fi
+
+      # 7️⃣ Scan de toutes les images Docker
+      - name: Scan all Docker images
+        if: steps.listimages.outputs.empty == 'false'
+        run: |
+          REPORT_DIR="reports/container/${TIMESTAMP}"
+          mkdir -p "$REPORT_DIR"
+
+          while read image; do
+            echo "🔍 Scanning: $image"
+            SAFE_NAME=$(echo "$image" | tr '/:' '_')
+            OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
+
+            trivy image \
+              --format json \
+              --ignore-unfixed \
+              --vuln-type os,library \
+              --severity CRITICAL,HIGH,MEDIUM,LOW \
+              -o "$OUTPUT_FILE" "$image"
+
+            echo "✔ Report saved: $OUTPUT_FILE"
+          done < images.txt
+
+      # 8️⃣ Upload artefacts
+      - name: Upload ContainerScan Reports
+        if: steps.listimages.outputs.empty == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-scan-${{ env.TIMESTAMP }}
+          path: reports/container/${{ env.TIMESTAMP }}/
+          retention-days: 30
