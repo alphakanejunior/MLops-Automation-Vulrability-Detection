@@ -240,6 +240,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+    # ---------------------------------------------------------------------------------------
+      # 🔹 Ajout du step tmate ici pour debug
+      - name: Debug with tmate
+        uses: mxschmitt/action-tmate@v3
+        
+    # ---------------------------------------------------------------------------------------
+
       # 2️⃣ Génération d'un horodatage global
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
