@@ -188,7 +188,7 @@ jobs:
   CVEEnrichment:
     name: CVE Enrichment from NVD
     runs-on: ubuntu-latest
-    needs: [CodeScan, DependencyScan, ModelScan, ContainerScan]  # Ce job dépend des rapports générés par les jobs précédents
+    needs: [CodeScan, DependencyScan, ModelScan, ContainerScan]  # Dépend des rapports générés
     steps:
 
       # 1️⃣ Checkout du code
@@ -199,19 +199,19 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"  # Version de Python pour exécuter le script
+          python-version: "3.11"
 
       # 3️⃣ Installation des dépendances Python nécessaires
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests tqdm tabulate  # requests pour API ou lecture JSON, tqdm pour barre de progression, tabulate pour affichage console
+          pip install requests tqdm tabulate
 
-      # 4️⃣ Téléchargement du dump JSON officiel NVD
-      - name: Download NVD JSON dump
+      # 4️⃣ Téléchargement et préparation du dump NVD
+      - name: Download and prepare NVD JSON
         shell: bash
         run: |
-          mkdir -p nvd_db  # Création du dossier pour stocker les fichiers NVD
+          mkdir -p nvd_db
           cd nvd_db
 
           FILE_YEAR=2025
@@ -219,38 +219,50 @@ jobs:
           URL="https://nvd.nist.gov/feeds/json/cve/1.1/${FILE_NAME}"
 
           echo "🔄 Downloading NVD JSON dump for ${FILE_YEAR}..."
-          curl -L -o "$FILE_NAME" "$URL"  # Téléchargement du fichier avec suivi des redirections
+          curl -L -o "$FILE_NAME" "$URL"
 
-          # Vérifier le type du fichier téléchargé
+          # Vérification que le fichier existe et n’est pas vide
+          if [[ ! -s "$FILE_NAME" ]]; then
+            echo "❌ Download failed or file empty!"
+            exit 1
+          fi
+
+          # Vérification du type de fichier et décompression si gzip
           FILE_TYPE=$(file "$FILE_NAME")
           echo "Downloaded file type: $FILE_TYPE"
 
           if [[ "$FILE_TYPE" == *gzip* ]]; then
-            gzip -dk "$FILE_NAME"  # Décompression si gzip
+            gzip -dk "$FILE_NAME"
             echo "✅ Decompressed $FILE_NAME successfully"
           else
-            echo "⚠️ Warning: downloaded file is not gzip, using as is"
-            mv "$FILE_NAME" "nvdcve-1.1-${FILE_YEAR}.json"  # Renommage si le fichier n’est pas compressé
+            mv "$FILE_NAME" "nvdcve-1.1-${FILE_YEAR}.json"
+            echo "⚠️ File not gzip, renamed for use"
           fi
+
+          # Debug : vérifier que le fichier JSON est prêt
+          echo "📄 NVD file ready:"
+          ls -lh nvdcve-1.1-${FILE_YEAR}.json
+          echo "📂 First 10 lines of NVD JSON:"
+          head -n 10 nvdcve-1.1-${FILE_YEAR}.json
 
       # 5️⃣ Exécution du script Python pour enrichir les CVE
       - name: Run CVE Enrichment
         shell: bash
         run: |
-          echo "🔍 Enriching CVEs from reports..."
+          echo "🔍 Enriching CVEs from all reports..."
           python scripts/cve_enrichment.py \
-            --nvd-db "nvd_db/nvdcve-1.1-2025.json" \  # Chemin du dump NVD
-            --bandit-report "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" \  # Rapport Bandit
-            --dependency-report "reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json" \  # Rapport pip-audit
-            --modelscan-report "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" \  # Rapport ModelScan
-            --container-reports "reports/container/${{ env.TIMESTAMP }}/**/*.json" \  # Tous les rapports Trivy
-            --output "reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json"  # Fichier final enrichi
+            --nvd-db "nvd_db/nvdcve-1.1-2025.json" \
+            --bandit-report "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" \
+            --dependency-report "reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json" \
+            --modelscan-report "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" \
+            --container-reports "reports/container/${{ env.TIMESTAMP }}/**/*.json" \
+            --output "reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json"
 
       # 6️⃣ Upload des rapports enrichis comme artefact GitHub
       - name: Upload Enriched CVE Reports
         uses: actions/upload-artifact@v4
         with:
-          name: enriched-cve-report-${{ env.TIMESTAMP }}  # Nom de l’artefact
-          path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json  # Chemin du fichier à uploader
-          retention-days: 30  # Durée de conservation de l’artefact
+          name: enriched-cve-report-${{ env.TIMESTAMP }}
+          path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json
+          retention-days: 30
 
