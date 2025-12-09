@@ -1,11 +1,5 @@
 name: Full Project Automatisation de la gestion des vulnérabilités dans les pipelines MLops
 
-# -------------------------------------------------------------
-# Déclencheurs CI
-# Le workflow s'exécute automatiquement sur :
-#   - chaque push dans la branche develop
-#   - chaque pull request ciblant la branche develop
-# -------------------------------------------------------------
 on:
   push:
     branches:
@@ -17,42 +11,33 @@ on:
 jobs:
   # =============================================================
   # Job 1 : CodeScan (Bandit)
-  # Analyse statique (SAST) du code Python
   # =============================================================
   CodeScan:
     name: Code Security Scan (Bandit)
     runs-on: ubuntu-latest
-
     steps:
-      # 1️⃣ Checkout du code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Génération d'un horodatage unique
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      # 3️⃣ Setup Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 4️⃣ Installation des dépendances pour Bandit
       - name: Install Bandit and dependencies
         run: |
           python -m pip install --upgrade pip
           pip install bandit tabulate
 
-      # 5️⃣ Scan Bandit et export JSON
       - name: Run Bandit Scan
         run: |
-          echo "🔍 Starting Bandit scan..."
           mkdir -p "reports/bandit/${{ env.TIMESTAMP }}"
-          bandit -r . -f json -o "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" || echo "⚠️ Bandit found vulnerabilities, but workflow continues."
+          bandit -r . -f json -o "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" || echo "⚠️ Bandit found vulnerabilities, workflow continues."
         continue-on-error: true
 
-      # 6️⃣ Upload du rapport Bandit
       - name: Upload Bandit Report
         uses: actions/upload-artifact@v4
         with:
@@ -60,84 +45,36 @@ jobs:
           path: reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json
           retention-days: 30
 
-      # 7️⃣ Affichage lisible Bandit
-      - name: Display Bandit Report as Table
-        run: |
-          python - <<EOF
-          import json, os
-          from tabulate import tabulate
-
-          report_file = f"reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json"
-          if not os.path.exists(report_file):
-              print("❌ Bandit report not found.")
-              exit(1)
-
-          with open(report_file) as f:
-              data = json.load(f)
-
-          table = []
-          for item in data.get("results", []):
-              table.append([
-                  item["filename"],
-                  item["line_number"],
-                  item["issue_severity"],
-                  item["issue_confidence"],
-                  item["test_name"],
-                  item["issue_text"]
-              ])
-
-          if table:
-              print("\nBandit Security Scan Report:\n")
-              print(tabulate(table, headers=["File","Line","Severity","Confidence","Test","Description"], tablefmt="grid"))
-          else:
-              print("✅ No issues found by Bandit.")
-          EOF
-        shell: bash
-        env:
-          PYTHONUNBUFFERED: 1
-
   # =============================================================
   # Job 2 : DependencyScan (pip-audit)
-  # Analyse des dépendances (SCA)
   # =============================================================
   DependencyScan:
     name: DependencyScan (pip-audit)
     runs-on: ubuntu-latest
     needs: CodeScan
-
     steps:
-      # 1️⃣ Checkout du code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Génération d'un horodatage précis
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      # 3️⃣ Setup Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 4️⃣ Installation des dépendances du projet
       - name: Install project dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pip-audit tabulate
 
-      # 5️⃣ Installation de pip-audit
-      - name: Install pip-audit
-        run: pip install pip-audit tabulate
-
-      # 6️⃣ Exécution du scan pip-audit et export JSON
       - name: Run Dependency Scan
         run: |
-          echo "🔍 Running pip-audit..."
           mkdir -p "reports/dependency/${{ env.TIMESTAMP }}"
           pip-audit --format=json -o "reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json" || echo "⚠️ Vulnerabilities detected"
 
-      # 7️⃣ Upload du rapport JSON comme artefact
       - name: Upload Dependency Report
         uses: actions/upload-artifact@v4
         with:
@@ -145,60 +82,13 @@ jobs:
           path: reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json
           retention-days: 30
 
-      # 8️⃣ Affichage lisible du rapport dans la console
-      - name: Display Dependency Report
-        run: |
-          python - <<EOF
-          import json, os
-          from tabulate import tabulate
-
-          report_file = f"reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json"
-          if not os.path.exists(report_file):
-              print("❌ Dependency report not found.")
-              exit(1)
-
-          with open(report_file) as f:
-              data = json.load(f)
-
-          table = []
-
-          # Traitement correct du JSON pip-audit
-          if isinstance(data, dict) and "dependencies" in data:
-              for pkg in data["dependencies"]:
-                  vulns = pkg.get("vulns", [])
-                  table.append([
-                      pkg.get("name", ""),
-                      pkg.get("version", ""),
-                      ",".join(pkg.get("fix_versions", [])) if pkg.get("fix_versions") else "",
-                      ",".join([v.get("id","") for v in vulns]) if vulns else "",
-                      ",".join([v.get("description","") for v in vulns]) if vulns else "",
-                  ])
-          else:
-              # Cas fallback si structure JSON inattendue
-              table.append([str(data)]*5)
-
-          if table:
-              print("\nDependency Security Scan Report:\n")
-              print(tabulate(table, headers=["Package","Version","Fixes","CVE","Description"], tablefmt="grid"))
-          else:
-              print("✅ No vulnerabilities found.")
-          EOF
-        shell: bash
-        env:
-          PYTHONUNBUFFERED: 1
-          
   # =============================================================
-  # Job 3 : ModelScan officiel corrigé
-  # Analyse des modèles ML avec ModelScan
-  # =============================================================
-  # =============================================================
-  # Job 3 : ModelScan officiel correctement configuré
+  # Job 3 : ModelScan officiel
   # =============================================================
   ModelScan:
-    name: Model Serialization Security Scan (Official)
+    name: Model Serialization Security Scan
     runs-on: ubuntu-latest
     needs: DependencyScan
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -217,7 +107,6 @@ jobs:
       - name: Run ModelScan
         continue-on-error: true
         run: |
-          echo "🔍 Running ModelScan..."
           modelscan scan -p model/ --json > "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" 2>&1 || true
 
       - name: Upload ModelScan Report
@@ -227,121 +116,104 @@ jobs:
           path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
           retention-days: 30
 
-  # ----------------------------
-  # Job 4 : Scan complet des conteneurs (Dockerfiles, images locales et registry) avec Trivy
-  # ----------------------------
+  # =============================================================
+  # Job 4 : ContainerScan (Trivy)
+  # =============================================================
   ContainerScan:
     name: ContainerScan (Trivy)
     runs-on: ubuntu-latest
     needs: ModelScan
-
     steps:
-      # 1️⃣ Checkout du dépôt
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Génération d'un horodatage global
       - name: Generate Timestamp
         run: echo "TIMESTAMP=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_ENV
 
-      # 3️⃣ Installation de Trivy (mode standalone)
       - name: Install Trivy
         run: |
           sudo apt-get update -y
           sudo apt-get install -y curl
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sudo sh -s -- -b /usr/local/bin v0.57.0
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.57.0
 
-      # 4️⃣ Connexion au registre GitHub Container Registry (GHCR)
       - name: Login to GitHub Container Registry
         run: |
-          echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io \
-            -u "${{ github.actor }}" --password-stdin
+          echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
-      # 5️⃣ Téléchargement de la base Trivy
       - name: Download Trivy DB
         run: trivy image --download-db-only
 
-      # 6️⃣ Pull ou build des images nécessaires avant le scan
-      - name: Ensure Docker images are present
-        run: |
-          IMAGES=("ghcr.io/${{ github.repository }}/my-app:latest" "ubuntu:22.04")  # ← Liste tes images ici
-          for image in "${IMAGES[@]}"; do
-            echo "🔄 Pulling or verifying: $image"
-            docker pull "$image" || echo "⚠️ Could not pull $image, skipping..."
-          done
-
-#--------------------------------------------------------------------------------------
-      
-            # 6️⃣ Pull des images vulnérables de test
-      - name: Pull vulnerable test images
-        run: |
-          echo "🔄 Pulling vulnerable test images..."
-          docker pull vulnerables/web-dvwa || echo "❌ Failed to pull DVWA"
-          docker pull bkimminich/juice-shop || echo "❌ Failed to pull Juice Shop"
-          docker pull vulnerables/cve-2014-6271 || echo "❌ Failed to pull Shellshock image"
-      
-#--------------------------------------------------------------------------------------
-
-      # 7️⃣ Scan des Dockerfiles du projet
+      # Scan Dockerfiles
       - name: Scan Dockerfiles
         run: |
           REPORT_DIR="reports/container/${TIMESTAMP}/dockerfiles"
           mkdir -p "$REPORT_DIR"
           find . -name 'Dockerfile*' | while read df; do
-            echo "🔍 Scanning Dockerfile: $df"
             SAFE_NAME=$(echo "$df" | tr '/:' '_')
-            OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
-
-            trivy config --format json -o "$OUTPUT_FILE" "$df" || echo "⚠️ Scan failed for $df"
-            echo "✔ Report saved: $OUTPUT_FILE"
+            trivy config --format json -o "${REPORT_DIR}/scan-${SAFE_NAME}.json" "$df" || echo "⚠️ Scan failed for $df"
           done
 
-      # 8️⃣ Scan des images locales
+      # Scan local Docker images
       - name: Scan local Docker images
         run: |
           REPORT_DIR="reports/container/${TIMESTAMP}/local-images"
           mkdir -p "$REPORT_DIR"
           docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" > images.txt
           while read image; do
-            echo "🔍 Scanning local image: $image"
             SAFE_NAME=$(echo "$image" | tr '/:' '_')
-            OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
             trivy image --format json --ignore-unfixed --vuln-type os,library \
-              --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image" || echo "⚠️ Scan failed for $image"
-            echo "✔ Report saved: $OUTPUT_FILE"
+              --severity CRITICAL,HIGH,MEDIUM,LOW -o "${REPORT_DIR}/scan-${SAFE_NAME}.json" "$image" || echo "⚠️ Scan failed for $image"
           done < images.txt
 
-      # 9️⃣ Scan des images dans le registre GHCR
-      - name: Scan registry Docker images
-        run: |
-          REPORT_DIR="reports/container/${TIMESTAMP}/registry-images"
-          mkdir -p "$REPORT_DIR"
-          REGISTRY_IMAGES=("ghcr.io/${{ github.repository }}/my-app:latest")  # Liste des images dans le registre
-          for image in "${REGISTRY_IMAGES[@]}"; do
-            echo "🔍 Scanning registry image: $image"
-            SAFE_NAME=$(echo "$image" | tr '/:' '_')
-            OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
-            trivy image --format json --ignore-unfixed --vuln-type os,library \
-              --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image" || echo "⚠️ Scan failed for $image"
-            echo "✔ Report saved: $OUTPUT_FILE"
-          done
-
-      # 🔟 Affichage lisible résumé des vulnérabilités
-      - name: Display Vulnerability Summary
-        run: |
-          echo "📊 ContainerScan Summary:"
-          for file in reports/container/${TIMESTAMP}/**/*.json; do
-            echo "🔹 File: $file"
-            jq -r '
-              .Results[]? | "\(.Target) → OS vulns: \(.Vulnerabilities // [] | length), Library vulns: \(.Vulnerabilities // [] | map(select(.Type=="library")) | length)"
-            ' "$file" || echo "No vulnerabilities"
-          done
-
-      # 1️⃣1️⃣ Upload des rapports comme artefact
+      # Upload container scan reports
       - name: Upload ContainerScan Reports
         uses: actions/upload-artifact@v4
         with:
           name: container-scan-${{ env.TIMESTAMP }}
           path: reports/container/${{ env.TIMESTAMP }}/
+          retention-days: 30
+
+  # =============================================================
+  # Job 5 : CVE Enrichment (Objectif 4)
+  # =============================================================
+  CVEEnrichment:
+    name: CVE Enrichment
+    runs-on: ubuntu-latest
+    needs: [CodeScan, DependencyScan, ModelScan, ContainerScan]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download all scan artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: reports/all
+
+      - name: Download NVD JSON dump
+        run: |
+          mkdir -p nvd_db
+          cd nvd_db
+          if [ ! -f nvdcve-1.1-2025.json.gz ]; then
+            curl -L -O https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-2025.json.gz
+          fi
+          gzip -dk nvdcve-1.1-2025.json.gz
+
+      - name: Run CVE Enrichment Script
+        run: python scripts/cve_enrichment.py
+
+      - name: Upload CVE Enriched Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cve-enriched-report
+          path: reports/cve_enriched/cve-report.json
           retention-days: 30
