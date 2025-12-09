@@ -183,46 +183,74 @@ jobs:
           retention-days: 30
 
   # =============================================================
-  # Job 5 : CVE Enrichment (Objectif 4)
+  # Job 5 : CVE Enrichment 
   # =============================================================
   CVEEnrichment:
-    name: CVE Enrichment
+    name: CVE Enrichment from NVD
     runs-on: ubuntu-latest
-    needs: [CodeScan, DependencyScan, ModelScan, ContainerScan]
+    needs: [CodeScan, DependencyScan, ModelScan, ContainerScan]  # Ce job dépend des rapports générés par les jobs précédents
     steps:
+
+      # 1️⃣ Checkout du code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      # 2️⃣ Setup Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.11"  # Version de Python pour exécuter le script
 
+      # 3️⃣ Installation des dépendances Python nécessaires
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install requests tqdm tabulate  # requests pour API ou lecture JSON, tqdm pour barre de progression, tabulate pour affichage console
 
-      - name: Download all scan artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: reports/all
-
+      # 4️⃣ Téléchargement du dump JSON officiel NVD
       - name: Download NVD JSON dump
+        shell: bash
         run: |
-          mkdir -p nvd_db
+          mkdir -p nvd_db  # Création du dossier pour stocker les fichiers NVD
           cd nvd_db
-          if [ ! -f nvdcve-1.1-2025.json.gz ]; then
-            curl -L -O https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-2025.json.gz
+
+          FILE_YEAR=2025
+          FILE_NAME="nvdcve-1.1-${FILE_YEAR}.json.gz"
+          URL="https://nvd.nist.gov/feeds/json/cve/1.1/${FILE_NAME}"
+
+          echo "🔄 Downloading NVD JSON dump for ${FILE_YEAR}..."
+          curl -L -o "$FILE_NAME" "$URL"  # Téléchargement du fichier avec suivi des redirections
+
+          # Vérifier le type du fichier téléchargé
+          FILE_TYPE=$(file "$FILE_NAME")
+          echo "Downloaded file type: $FILE_TYPE"
+
+          if [[ "$FILE_TYPE" == *gzip* ]]; then
+            gzip -dk "$FILE_NAME"  # Décompression si gzip
+            echo "✅ Decompressed $FILE_NAME successfully"
+          else
+            echo "⚠️ Warning: downloaded file is not gzip, using as is"
+            mv "$FILE_NAME" "nvdcve-1.1-${FILE_YEAR}.json"  # Renommage si le fichier n’est pas compressé
           fi
-          gzip -dk nvdcve-1.1-2025.json.gz
 
-      - name: Run CVE Enrichment Script
-        run: python scripts/cve_enrichment.py
+      # 5️⃣ Exécution du script Python pour enrichir les CVE
+      - name: Run CVE Enrichment
+        shell: bash
+        run: |
+          echo "🔍 Enriching CVEs from reports..."
+          python scripts/cve_enrichment.py \
+            --nvd-db "nvd_db/nvdcve-1.1-2025.json" \  # Chemin du dump NVD
+            --bandit-report "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" \  # Rapport Bandit
+            --dependency-report "reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json" \  # Rapport pip-audit
+            --modelscan-report "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" \  # Rapport ModelScan
+            --container-reports "reports/container/${{ env.TIMESTAMP }}/**/*.json" \  # Tous les rapports Trivy
+            --output "reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json"  # Fichier final enrichi
 
-      - name: Upload CVE Enriched Report
+      # 6️⃣ Upload des rapports enrichis comme artefact GitHub
+      - name: Upload Enriched CVE Reports
         uses: actions/upload-artifact@v4
         with:
-          name: cve-enriched-report
-          path: reports/cve_enriched/cve-report.json
-          retention-days: 30
+          name: enriched-cve-report-${{ env.TIMESTAMP }}  # Nom de l’artefact
+          path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json  # Chemin du fichier à uploader
+          retention-days: 30  # Durée de conservation de l’artefact
+
