@@ -188,7 +188,7 @@ jobs:
   CVEEnrichment:
     name: CVE Enrichment from NVD
     runs-on: ubuntu-latest
-    needs: [CodeScan, DependencyScan, ModelScan, ContainerScan]  # Dépend des rapports générés
+    needs: [CodeScan, DependencyScan, ModelScan, ContainerScan]  # Dépend des rapports précédents
     steps:
 
       # 1️⃣ Checkout du code
@@ -208,7 +208,7 @@ jobs:
           pip install requests tqdm tabulate
 
       # 4️⃣ Téléchargement et préparation du dump NVD
-      - name: Download and prepare NVD JSON
+      - name: Download and verify NVD JSON
         shell: bash
         run: |
           mkdir -p nvd_db
@@ -217,6 +217,7 @@ jobs:
           FILE_YEAR=2025
           FILE_NAME="nvdcve-1.1-${FILE_YEAR}.json.gz"
           URL="https://nvd.nist.gov/feeds/json/cve/1.1/${FILE_NAME}"
+          DECOMPRESSED_FILE="nvdcve-1.1-${FILE_YEAR}.json"
 
           echo "🔄 Downloading NVD JSON dump for ${FILE_YEAR}..."
           curl -L -o "$FILE_NAME" "$URL"
@@ -227,23 +228,28 @@ jobs:
             exit 1
           fi
 
-          # Vérification du type de fichier et décompression si gzip
+          # Vérification du type de fichier
           FILE_TYPE=$(file "$FILE_NAME")
           echo "Downloaded file type: $FILE_TYPE"
 
+          # Décompression si gzip
           if [[ "$FILE_TYPE" == *gzip* ]]; then
             gzip -dk "$FILE_NAME"
-            echo "✅ Decompressed $FILE_NAME successfully"
           else
-            mv "$FILE_NAME" "nvdcve-1.1-${FILE_YEAR}.json"
-            echo "⚠️ File not gzip, renamed for use"
+            mv "$FILE_NAME" "$DECOMPRESSED_FILE"
           fi
 
-          # Debug : vérifier que le fichier JSON est prêt
-          echo "📄 NVD file ready:"
-          ls -lh nvdcve-1.1-${FILE_YEAR}.json
-          echo "📂 First 10 lines of NVD JSON:"
-          head -n 10 nvdcve-1.1-${FILE_YEAR}.json
+          # Vérification que le JSON décompressé existe et n’est pas vide
+          if [[ ! -s "$DECOMPRESSED_FILE" ]]; then
+            echo "❌ JSON file missing or empty after decompression!"
+            head -n 20 "$FILE_NAME"  # Affiche les premières lignes pour debug
+            exit 1
+          fi
+
+          echo "✅ NVD JSON ready:"
+          ls -lh "$DECOMPRESSED_FILE"
+          echo "📂 First 20 lines for debug:"
+          head -n 20 "$DECOMPRESSED_FILE"
 
       # 5️⃣ Exécution du script Python pour enrichir les CVE
       - name: Run CVE Enrichment
@@ -265,4 +271,5 @@ jobs:
           name: enriched-cve-report-${{ env.TIMESTAMP }}
           path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json
           retention-days: 30
+
 
