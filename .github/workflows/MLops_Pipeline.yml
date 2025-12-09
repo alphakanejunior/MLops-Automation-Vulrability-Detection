@@ -156,13 +156,14 @@ jobs:
       # Scan local Docker images
       - name: Scan local Docker images
         run: |
-          REPORT_DIR="reports/container/${TIMESTAMP}/local-images"
+          REPORT_DIR="reports/container/${{ env.TIMESTAMP }}/local-images"
           mkdir -p "$REPORT_DIR"
           docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" > images.txt
           while read image; do
             SAFE_NAME=$(echo "$image" | tr '/:' '_')
+            OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
             trivy image --format json --ignore-unfixed --vuln-type os,library \
-              --severity CRITICAL,HIGH,MEDIUM,LOW -o "${REPORT_DIR}/scan-${SAFE_NAME}.json" "$image" || echo "⚠️ Scan failed for $image"
+              --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image" || echo "⚠️ Scan failed for $image"
           done < images.txt
 
       # Upload container scan reports
