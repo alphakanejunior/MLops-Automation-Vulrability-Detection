@@ -24,7 +24,7 @@ from tabulate import tabulate
 # Configuration
 # ----------------------------
 REPORTS_DIR = Path("reports")
-NVD_JSON_PATH = Path("nvd_db/nvdcve-1.1-2025.json")
+NVD_JSON_PATH = Path("nvd_db/nvdcve-2.0-modified.json")
 OUTPUT_DIR = REPORTS_DIR / "cve_enriched"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_FILE = OUTPUT_DIR / "cve-report.json"

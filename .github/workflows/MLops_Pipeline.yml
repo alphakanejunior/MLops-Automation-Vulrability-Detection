@@ -212,23 +212,23 @@ jobs:
         run: |
           mkdir -p nvd_db
           # Copier le fichier NVD pré-téléchargé dans le dossier de travail
-          cp nvd_db_prepared/nvdcve-1.1-2025.json nvd_db/
+          cp nvd_db_prepared/nvdcve-2.0-modified.json nvd_db/
           # Vérification
-          if [[ ! -s nvd_db/nvdcve-1.1-2025.json ]]; then
+          if [[ ! -s nvd_db/nvdcve-2.0-modified.json ]]; then
             echo "❌ NVD JSON file missing or empty!"
             exit 1
           fi
           echo "✅ NVD JSON ready:"
-          ls -lh nvd_db/nvdcve-1.1-2025.json
+          ls -lh nvd_db/nvdcve-2.0-modified.json
           echo "📂 First 20 lines for debug:"
-          head -n 20 nvd_db/nvdcve-1.1-2025.json
+          head -n 20 nvd_db/nvdcve-2.0-modified.json
 
       # 5️⃣ Exécution du script Python pour enrichir les CVE
       - name: Run CVE Enrichment
         run: |
           echo "🔍 Enriching CVEs from all reports..."
           python scripts/cve_enrichment.py \
-            --nvd-db "nvd_db/nvdcve-1.1-2025.json" \
+            --nvd-db "nvd_db/nvdcve-2.0-modified.json" \
             --bandit-report "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" \
             --dependency-report "reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json" \
             --modelscan-report "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" \
