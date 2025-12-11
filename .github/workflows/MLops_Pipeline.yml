@@ -132,14 +132,12 @@ jobs:
 
       - name: Install Trivy
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget apt-transport-https gnupg
+          TRIVY_VERSION="0.57.0"
+          wget -q https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+          tar zxvf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+          sudo mv trivy /usr/local/bin/
+          trivy --version
 
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo "deb https://aquasecurity.github.io/trivy-repo/deb stable main" | sudo tee /etc/apt/sources.list.d/trivy.list
-
-          sudo apt-get update
-          sudo apt-get install -y trivy
 
       - name: Login to GitHub Container Registry
         run: |
