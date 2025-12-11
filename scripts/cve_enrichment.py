@@ -57,35 +57,19 @@ def extract_bandit_cves(report):
                 cves.append(f"CWE-{cwe}")
     return cves
 
-
 def extract_dependency_cves(report):
-    """
-    pip-audit format:
-    {
-      "dependencies": [
-        {
-          "name": "package",
-          "version": "x.y.z",
-          "vulns": [
-            {"id": "CVE-XXXX-YYYY", ...}
-          ]
-        }
-      ]
-    }
-    """
     cves = []
     for pkg in report.get("dependencies", []):
-        vulns = pkg.get("vulns", [])
-
-        # si aucune vulnérabilité → on crée un identifiant unique
-        if not vulns:
-            cves.append(f"{pkg['name']}@{pkg['version']}")
-            continue
-
-        for v in vulns:
-            cves.append(v.get("id", f"{pkg['name']}@{pkg['version']}"))
-
+        for v in pkg.get("vulns", []):
+            # utiliser un CVE si disponible
+            if "aliases" in v:
+                for alias in v["aliases"]:
+                    if alias.startswith("CVE-"):
+                        cves.append(alias)
+            else:
+                cves.append(v.get("id", f"{pkg['name']}@{pkg['version']}"))
     return cves
+
 
 
 def extract_modelscan_cves(report):
