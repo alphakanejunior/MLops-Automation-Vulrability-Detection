@@ -70,6 +70,17 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pip-audit tabulate
 
+# =============================================================
+      - name: Install vulnerable test dependencies
+        run: |
+          pip install \
+            "urllib3==1.26.5" \
+            "requests==2.19.1" \
+            "PyYAML==5.3" \
+            "Jinja2==2.10.0" \
+            "Pillow==6.2.1"
+# =============================================================
+
       - name: Run Dependency Scan
         run: |
           mkdir -p "reports/dependency/${{ env.TIMESTAMP }}"
