@@ -235,6 +235,34 @@ jobs:
           fi
           echo "✅ NVD JSON ready"
 
+# ============================================================
+
+      - name: Download Bandit Report
+        uses: actions/download-artifact@v4
+        with:
+          name: bandit-report-${{ env.TIMESTAMP }}
+          path: reports/bandit/${{ env.TIMESTAMP }}
+
+      - name: Download Dependency Report
+        uses: actions/download-artifact@v4
+        with:
+          name: dependency-report-${{ env.TIMESTAMP }}
+          path: reports/dependency/${{ env.TIMESTAMP }}
+
+      - name: Download ModelScan Report
+        uses: actions/download-artifact@v4
+        with:
+          name: modelscan-report-${{ env.TIMESTAMP }}
+          path: reports/models/${{ env.TIMESTAMP }}/official
+
+      - name: Download ContainerScan Reports
+        uses: actions/download-artifact@v4
+        with:
+          name: container-scan-${{ env.TIMESTAMP }}
+          path: reports/container/${{ env.TIMESTAMP }}
+# =============================================================
+
+
       - name: Run CVE Enrichment
         run: |
           python scripts/cve_enrichment.py \
