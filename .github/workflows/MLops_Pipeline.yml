@@ -71,14 +71,19 @@ jobs:
           pip install pip-audit tabulate
 
 # =============================================================
-      - name: Install vulnerable test dependencies
+      - name: Install system dependencies
         run: |
-          pip install \
-            "urllib3==1.22" \
-            "requests==2.19.1" \
-            "PyYAML==5.3" \
-            "Jinja2==2.10.0" \
-            "Pillow==6.2.1"
+          sudo apt-get update
+          sudo apt-get install -y \
+            libjpeg-dev \
+            zlib1g-dev \
+            libpng-dev \
+            libtiff-dev \
+            libfreetype6-dev \
+            liblcms2-dev \
+            libwebp-dev \
+            tcl8.6-dev tk8.6-dev \
+            python3-tk
 # =============================================================
 
       - name: Run Dependency Scan
