@@ -12,12 +12,13 @@ import argparse
 import re
 from pathlib import Path
 from tabulate import tabulate
+import glob
 
 # ==========================================================
 # CLI ARGUMENTS
 # ==========================================================
 parser = argparse.ArgumentParser(description="CVE Enrichment Tool")
-parser.add_argument("--nvd-db", required=True, help="Chemin du fichier NVD JSON local")
+parser.add_argument("--nvd-db", required=True, help="Chemin du dossier contenant tous les fichiers NVD JSON")
 parser.add_argument("--bandit-report", required=False, help="Fichier ou dossier Bandit")
 parser.add_argument("--dependency-report", required=False, help="Fichier ou dossier dépendances")
 parser.add_argument("--modelscan-report", required=False, help="Fichier ou dossier ModelScan")
@@ -25,7 +26,6 @@ parser.add_argument("--container-reports", required=False, help="Pattern pour fi
 parser.add_argument("--output", required=True, help="Chemin de sortie du fichier enrichi")
 args = parser.parse_args()
 
-NVD_JSON_PATH = Path(args.nvd_db)
 OUTPUT_FILE = Path(args.output)
 os.makedirs(OUTPUT_FILE.parent, exist_ok=True)
 
@@ -75,37 +75,39 @@ def extract_trivy_cves(report):
     return cves
 
 # ==========================================================
-# LOAD NVD
+# LOAD ALL NVD FILES
 # ==========================================================
-print("🔄 Loading NVD database...")
-nvd_raw = load_json(NVD_JSON_PATH)
+print("🔄 Loading NVD database from folder:", args.nvd_db)
 nvd_data = {}
 
-for item in nvd_raw.get("vulnerabilities", []):
-    cve = item.get("cve", {})
-    cve_id = cve.get("id")
-    if not cve_id:
-        continue
+for nvd_file in glob.glob(f"{args.nvd_db}/*.json"):
+    print(f"🔄 Loading {nvd_file}")
+    nvd_raw = load_json(nvd_file)
+    for item in nvd_raw.get("vulnerabilities", []):
+        cve = item.get("cve", {})
+        cve_id = cve.get("id")
+        if not cve_id:
+            continue
 
-    descs = cve.get("descriptions", [])
-    descr = ""
-    for d in descs:
-        if d.get("lang") == "en":
-            descr = d.get("value")
-            break
+        descs = cve.get("descriptions", [])
+        descr = ""
+        for d in descs:
+            if d.get("lang") == "en":
+                descr = d.get("value")
+                break
 
-    metrics = item.get("metrics", {})
-    cvss_v3 = metrics.get("cvssMetricV31", [{}])[0].get("cvssData", {})
+        metrics = item.get("metrics", {})
+        cvss_v3 = metrics.get("cvssMetricV31", [{}])[0].get("cvssData", {})
 
-    nvd_data[cve_id] = {
-        "description": descr,
-        "cvss_v2": {},
-        "cvss_v3": cvss_v3,
-        "severity": cvss_v3.get("baseSeverity", ""),
-        "exploitability": "",
-        "patch": "",
-        "source": "NVD"
-    }
+        nvd_data[cve_id] = {
+            "description": descr,
+            "cvss_v2": {},
+            "cvss_v3": cvss_v3,
+            "severity": cvss_v3.get("baseSeverity", ""),
+            "exploitability": "",
+            "patch": "",
+            "source": "NVD"
+        }
 
 # ==========================================================
 # COLLECT ALL VULNERABILITIES
