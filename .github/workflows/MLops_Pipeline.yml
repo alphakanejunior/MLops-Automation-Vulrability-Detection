@@ -228,12 +228,13 @@ jobs:
       - name: Prepare local NVD JSON
         run: |
           mkdir -p nvd_db
-          cp nvd_db_prepared/nvdcve-2.0-modified.json nvd_db/
-          if [[ ! -s nvd_db/nvdcve-2.0-modified.json ]]; then
-            echo "❌ NVD JSON file missing or empty!"
+          cp nvd_db_prepared/*.json nvd_db/
+          if [ -z "$(ls -A nvd_db/*.json 2>/dev/null)" ]; then
+            echo "❌ NVD JSON files missing!"
             exit 1
           fi
-          echo "✅ NVD JSON ready"
+          echo "✅ NVD JSON files ready"
+
 
 # ============================================================
 
