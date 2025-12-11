@@ -105,12 +105,6 @@ jobs:
           mkdir -p "reports/dependency/${{ env.TIMESTAMP }}"
           pip-audit --format=json -o "reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json" || echo "⚠️ Vulnerabilities detected"
 
-      - name: Save Bandit report
-        run: |
-          mkdir -p reports/bandit/${{ steps.ts.outputs.ts }}
-          mv bandit-report-${{ steps.ts.outputs.ts }} reports/bandit/${{ steps.ts.outputs.ts }}/bandit-report.json
-
-
       - name: Upload Dependency Report
         uses: actions/upload-artifact@v4
         with:
