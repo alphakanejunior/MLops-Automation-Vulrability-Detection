@@ -71,6 +71,9 @@ jobs:
           pip install pip-audit tabulate
 
 # =============================================================
+      # =============================================================
+      # Install system dependencies (for Pillow and other libs)
+      # =============================================================
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -84,6 +87,17 @@ jobs:
             libwebp-dev \
             tcl8.6-dev tk8.6-dev \
             python3-tk
+
+      # =============================================================
+      # Install vulnerable Python dependencies (for testing pip-audit)
+      # =============================================================
+      - name: Install vulnerable dependencies for testing
+        run: |
+          pip install urllib3==1.25.8
+          pip install requests==2.19.1
+          pip install PyYAML==5.3
+          pip install Jinja2==2.10.0
+
 # =============================================================
 
       - name: Run Dependency Scan
