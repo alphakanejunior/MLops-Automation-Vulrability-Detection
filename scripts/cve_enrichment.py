@@ -78,46 +78,62 @@ def extract_trivy_cves(report):
     return cves
 
 # ==========================================================
-# LOAD ALL NVD FILES
+# LOAD ALL NVD FILES (NVD 2.0)
 # ==========================================================
 print("🔄 Loading NVD database from folder:", args.nvd_db)
 nvd_data = {}
 
-for nvd_file in glob.glob(f"{args.nvd_db}/*.json"):
+nvd_path = Path(args.nvd_db)
+
+if not nvd_path.exists():
+    print("❌ NVD path not found")
+    exit(1)
+
+nvd_files = list(nvd_path.glob("*.json"))
+if not nvd_files:
+    print("❌ No NVD JSON files found")
+    exit(1)
+
+for nvd_file in nvd_files:
     print(f"🔄 Loading {nvd_file}")
     nvd_raw = load_json(nvd_file)
-    for item in nvd_raw.get("CVE_Items", []):
-        # Récupération de l'ID CVE
-        cve_meta = item.get("cve", {}).get("CVE_data_meta", {})
-        cve_id = cve_meta.get("ID")
+
+    for item in nvd_raw.get("vulnerabilities", []):
+        cve = item.get("cve", {})
+        cve_id = cve.get("id")
         if not cve_id:
             continue
 
         # Description
-        descs = item.get("cve", {}).get("description", {}).get("description_data", [])
         descr = ""
-        for d in descs:
+        for d in cve.get("descriptions", []):
             if d.get("lang") == "en":
                 descr = d.get("value")
                 break
 
-        # CVSS v3
-        impact = item.get("impact", {})
-        baseMetricV3 = impact.get("baseMetricV3", {})
-        cvss_v3 = baseMetricV3.get("cvssV3", {})
+        # CVSS v3.1
+        metrics = item.get("metrics", {})
+        cvss_v3 = {}
+        severity = ""
 
-        # CVSS v2
-        baseMetricV2 = impact.get("baseMetricV2", {})
+        if "cvssMetricV31" in metrics:
+            cvss_v3 = metrics["cvssMetricV31"][0].get("cvssData", {})
+            severity = cvss_v3.get("baseSeverity", "")
+        elif "cvssMetricV30" in metrics:
+            cvss_v3 = metrics["cvssMetricV30"][0].get("cvssData", {})
+            severity = cvss_v3.get("baseSeverity", "")
 
         nvd_data[cve_id] = {
             "description": descr,
-            "cvss_v2": baseMetricV2,
+            "cvss_v2": {},
             "cvss_v3": cvss_v3,
-            "severity": cvss_v3.get("baseSeverity", ""),
+            "severity": severity,
             "exploitability": "",
             "patch": "",
             "source": "NVD"
         }
+
+print(f"📊 CVE chargées depuis la NVD : {len(nvd_data)}")
 
 # ==========================================================
 # COLLECT ALL VULNERABILITIES
