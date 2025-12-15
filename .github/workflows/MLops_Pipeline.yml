@@ -225,9 +225,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests tqdm tabulate
 
+# =============================================================
+      - name: Download NVD CVE database (2020-2025)
+        run: |
+          mkdir -p nvd_db
+          for YEAR in 2020 2021 2022 2023 2024 2025; do
+            echo "⬇️ Downloading NVD $YEAR..."
+            curl -L \
+              "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-${YEAR}.json.gz" \
+              -o "nvd_db/nvdcve-2.0-${YEAR}.json.gz"
+            gunzip -f "nvd_db/nvdcve-2.0-${YEAR}.json.gz"
+          done
+# =============================================================
 
 
-          
+
+
+
       - name: Prepare local NVD JSON
         run: |
           mkdir -p nvd_db
