@@ -1,190 +1,218 @@
 #!/usr/bin/env python3
 """
 cve_enrichment.py
-Enrichit les vulnérabilités détectées dans Bandit, pip-audit, ModelScan et Trivy
-avec les données NVD 2.0 et exporte un fichier JSON consolidé.
-Même si la vulnérabilité n'a pas de correspondance NVD, elle sera conservée.
+Enrichissement complet des vulnérabilités :
+- CVE -> NVD 2.0
+- PYSEC -> OSV.dev
+- AVD -> Trivy
+- CWE -> Sévérité estimée
 """
 
 import json
-import os
 import argparse
 import re
+import glob
+import requests
 from pathlib import Path
 from tabulate import tabulate
-import glob
 
 # ==========================================================
-# CLI ARGUMENTS
+# ARGUMENTS CLI
 # ==========================================================
-parser = argparse.ArgumentParser(description="CVE Enrichment Tool")
-parser.add_argument("--nvd-db", required=True, help="Chemin du dossier contenant tous les fichiers NVD JSON")
-parser.add_argument("--bandit-report", required=False, help="Fichier ou dossier Bandit")
-parser.add_argument("--dependency-report", required=False, help="Fichier ou dossier dépendances")
-parser.add_argument("--modelscan-report", required=False, help="Fichier ou dossier ModelScan")
-parser.add_argument("--container-reports", required=False, help="Pattern pour fichiers conteneur (Trivy)")
-parser.add_argument("--output", required=True, help="Chemin de sortie du fichier enrichi")
+parser = argparse.ArgumentParser(description="CVE Enrichment Tool (FINAL)")
+parser.add_argument("--nvd-db", required=True, help="Dossier NVD JSON 2.0")
+parser.add_argument("--bandit-report", required=False)
+parser.add_argument("--dependency-report", required=False)
+parser.add_argument("--modelscan-report", required=False)
+parser.add_argument("--container-reports", required=False)
+parser.add_argument("--output", required=True)
 args = parser.parse_args()
 
-OUTPUT_FILE = Path(args.output)
-os.makedirs(OUTPUT_FILE.parent, exist_ok=True)
+OUTPUT = Path(args.output)
+OUTPUT.parent.mkdir(parents=True, exist_ok=True)
 
 # ==========================================================
-# LOAD JSON
+# UTILS
 # ==========================================================
 def load_json(path):
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if not data:
-                raise ValueError("Fichier vide")
-            return data
-    except Exception as e:
-        print(f"⚠️ Impossible de lire {path}: {e}")
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
         return {}
 
 # ==========================================================
-# EXTRACT VULNERABILITIES
+# CWE SEVERITY MAP (ESTIMÉ)
 # ==========================================================
-def extract_bandit_cves(report):
-    cves = []
-    for item in report.get("results", []):
-        found = re.findall(r"CVE-\d{4}-\d{4,7}", item.get("issue_text", ""))
-        if found:
-            cves.extend(found)
-        else:
-            cwe_id = item.get("issue_cwe", {}).get("id")
-            if cwe_id:
-                cves.append(f"CWE-{cwe_id}")
-    return cves
-
-def extract_dependency_cves(report):
-    cves = []
-    for pkg in report.get("dependencies", []):
-        for v in pkg.get("vulns", []):
-            cves.append(v.get("id", f"{pkg['name']}@{pkg['version']}"))
-    return cves
-
-def extract_modelscan_cves(report):
-    return [item.get("cve", f"{item.get('id', 'modelscan-unknown')}") for item in report.get("vulnerabilities", [])]
-
-def extract_trivy_cves(report):
-    cves = []
-    for result in report.get("Results", []):
-        for vuln in result.get("Vulnerabilities", []):
-            cves.append(vuln.get("VulnerabilityID", "TRIVY-UNKNOWN"))
-        for misconf in result.get("Misconfigurations", []):
-            cves.append(misconf.get("AVDID", "TRIVY-MISCONFIG-UNKNOWN"))
-    return cves
+CWE_SEVERITY = {
+    "CWE-89": ("CRITICAL", 9.8),
+    "CWE-78": ("CRITICAL", 9.5),
+    "CWE-502": ("HIGH", 8.5),
+    "CWE-259": ("HIGH", 7.5),
+    "CWE-20": ("MEDIUM", 6.5),
+    "CWE-605": ("MEDIUM", 6.0),
+}
 
 # ==========================================================
-# LOAD ALL NVD FILES (NVD 2.0)
+# EXTRACTORS
 # ==========================================================
-print("🔄 Loading NVD database from folder:", args.nvd_db)
+def extract_bandit(report):
+    ids = set()
+    for r in report.get("results", []):
+        ids.update(re.findall(r"CVE-\d{4}-\d{4,7}", r.get("issue_text", "")))
+        cwe = r.get("issue_cwe", {}).get("id")
+        if cwe:
+            ids.add(f"CWE-{cwe}")
+    return ids
+
+def extract_dependency(report):
+    ids = set()
+    for d in report.get("dependencies", []):
+        for v in d.get("vulns", []):
+            ids.add(v.get("id"))
+    return ids
+
+def extract_modelscan(report):
+    return {v.get("cve") for v in report.get("vulnerabilities", []) if v.get("cve")}
+
+def extract_trivy(report):
+    ids = set()
+    for r in report.get("Results", []):
+        for v in r.get("Vulnerabilities", []):
+            ids.add(v.get("VulnerabilityID"))
+        for m in r.get("Misconfigurations", []):
+            ids.add(m.get("AVDID"))
+    return ids
+
+# ==========================================================
+# LOAD NVD 2.0
+# ==========================================================
+print("🔄 Chargement NVD 2.0…")
 nvd_data = {}
 
-nvd_path = Path(args.nvd_db)
-
-if not nvd_path.exists():
-    print("❌ NVD path not found")
-    exit(1)
-
-nvd_files = list(nvd_path.glob("*.json"))
-if not nvd_files:
-    print("❌ No NVD JSON files found")
-    exit(1)
-
-for nvd_file in nvd_files:
-    print(f"🔄 Loading {nvd_file}")
-    nvd_raw = load_json(nvd_file)
-
-    for item in nvd_raw.get("vulnerabilities", []):
+for file in Path(args.nvd_db).glob("*.json"):
+    data = load_json(file)
+    for item in data.get("vulnerabilities", []):
         cve = item.get("cve", {})
         cve_id = cve.get("id")
         if not cve_id:
             continue
 
-        # Description
-        descr = ""
-        for d in cve.get("descriptions", []):
-            if d.get("lang") == "en":
-                descr = d.get("value")
-                break
+        desc = next((d["value"] for d in cve.get("descriptions", []) if d["lang"] == "en"), "")
 
-        # CVSS v3.1
         metrics = item.get("metrics", {})
-        cvss_v3 = {}
+        cvss = {}
         severity = ""
+        exploit = ""
 
         if "cvssMetricV31" in metrics:
-            cvss_v3 = metrics["cvssMetricV31"][0].get("cvssData", {})
-            severity = cvss_v3.get("baseSeverity", "")
-        elif "cvssMetricV30" in metrics:
-            cvss_v3 = metrics["cvssMetricV30"][0].get("cvssData", {})
-            severity = cvss_v3.get("baseSeverity", "")
+            m = metrics["cvssMetricV31"][0]
+            cvss = m.get("cvssData", {})
+            severity = cvss.get("baseSeverity", "")
+            exploit = m.get("exploitabilityScore", "")
 
         nvd_data[cve_id] = {
-            "description": descr,
-            "cvss_v2": {},
-            "cvss_v3": cvss_v3,
+            "description": desc,
+            "cvss_v3_score": cvss.get("baseScore", ""),
+            "cvss_vector": cvss.get("vectorString", ""),
             "severity": severity,
-            "exploitability": "",
+            "exploitability": exploit,
+            "references": [r["url"] for r in cve.get("references", [])],
             "patch": "",
             "source": "NVD"
         }
 
-print(f"📊 CVE chargées depuis la NVD : {len(nvd_data)}")
+print(f"📊 CVE NVD chargées : {len(nvd_data)}")
 
 # ==========================================================
-# COLLECT ALL VULNERABILITIES
+# COLLECT ALL IDS
 # ==========================================================
-print("🔍 Collecting vulnerabilities...")
-all_vulns = set()
+all_ids = set()
 
-def add_report(path, extractor):
-    path_obj = Path(path)
-    if not path_obj.exists():
-        print(f"⚠️ Report {path} not found")
-        return
-    if path_obj.is_file():
-        report = load_json(path_obj)
-        all_vulns.update(extractor(report))
-    elif path_obj.is_dir():
-        for file in path_obj.glob("**/*.json"):
-            if file.is_file():
-                report = load_json(file)
-                all_vulns.update(extractor(report))
+def collect(path, extractor):
+    p = Path(path)
+    if p.is_file():
+        all_ids.update(extractor(load_json(p)))
+    elif p.is_dir():
+        for f in p.glob("**/*.json"):
+            all_ids.update(extractor(load_json(f)))
 
 if args.bandit_report:
-    add_report(args.bandit_report, extract_bandit_cves)
-
+    collect(args.bandit_report, extract_bandit)
 if args.dependency_report:
-    add_report(args.dependency_report, extract_dependency_cves)
-
+    collect(args.dependency_report, extract_dependency)
 if args.modelscan_report:
-    add_report(args.modelscan_report, extract_modelscan_cves)
-
+    collect(args.modelscan_report, extract_modelscan)
 if args.container_reports:
-    # Récupération récursive des fichiers container
-    for file in Path().rglob(args.container_reports):
-        if file.is_file():
-            report = load_json(file)
-            all_vulns.update(extract_trivy_cves(report))
+    for f in glob.glob(args.container_reports, recursive=True):
+        all_ids.update(extract_trivy(load_json(f)))
+
+print(f"🔍 Vulnérabilités détectées : {len(all_ids)}")
+
+# ==========================================================
+# OSV (PYSEC)
+# ==========================================================
+def enrich_pysec(pysec_id):
+    r = requests.post(
+        "https://api.osv.dev/v1/query",
+        json={"query": pysec_id},
+        timeout=10
+    )
+    if r.status_code != 200:
+        return None
+
+    v = r.json().get("vulns", [])
+    if not v:
+        return None
+
+    vuln = v[0]
+    sev = vuln.get("severity", [{}])
+    score = sev[0].get("score", "")
+
+    return {
+        "description": vuln.get("summary", ""),
+        "cvss_v3_score": score,
+        "severity": sev[0].get("type", ""),
+        "exploitability": "",
+        "patch": vuln.get("references", [{}])[0].get("url", ""),
+        "source": "OSV"
+    }
 
 # ==========================================================
 # ENRICH
 # ==========================================================
-print(f"🔍 Enriching {len(all_vulns)} vulnerabilities with NVD data...")
-
 enriched = {}
-for vuln in all_vulns:
-    if vuln in nvd_data:
-        enriched[vuln] = nvd_data[vuln]
-    else:
-        enriched[vuln] = {
+
+for vid in sorted(all_ids):
+    if vid in nvd_data:
+        enriched[vid] = nvd_data[vid]
+
+    elif vid.startswith("PYSEC"):
+        osv = enrich_pysec(vid)
+        enriched[vid] = osv if osv else {
             "description": "",
-            "cvss_v2": {},
-            "cvss_v3": {},
+            "cvss_v3_score": "",
+            "severity": "",
+            "exploitability": "",
+            "patch": "",
+            "source": "PYSEC"
+        }
+
+    elif vid.startswith("CWE"):
+        sev, score = CWE_SEVERITY.get(vid, ("LOW", 3.0))
+        enriched[vid] = {
+            "description": "Faiblesse de sécurité (CWE)",
+            "cvss_v3_score": score,
+            "severity": sev,
+            "exploitability": "",
+            "patch": "Correction du code requise",
+            "source": "CWE"
+        }
+
+    else:
+        enriched[vid] = {
+            "description": "",
+            "cvss_v3_score": "",
             "severity": "",
             "exploitability": "",
             "patch": "",
@@ -192,36 +220,30 @@ for vuln in all_vulns:
         }
 
 # ==========================================================
-# SAVE JSON
+# SAVE
 # ==========================================================
-with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+with open(OUTPUT, "w", encoding="utf-8") as f:
     json.dump(enriched, f, indent=2)
 
-print(f"✅ Enriched report saved to {OUTPUT_FILE}")
+print(f"✅ Rapport enrichi sauvegardé : {OUTPUT}")
 
 # ==========================================================
-# HUMAN TABLE OUTPUT
+# TABLE
 # ==========================================================
 table = [
     [
         v,
-        info["description"][:80],
-        info["cvss_v2"].get("baseScore", ""),
-        info["cvss_v3"].get("baseScore", ""),
-        info["severity"],
-        info["exploitability"],
-        info["patch"],
-        info.get("source", "")
+        i.get("severity", ""),
+        i.get("cvss_v3_score", ""),
+        i.get("exploitability", ""),
+        i.get("source", ""),
+        i.get("description", "")[:80]
     ]
-    for v, info in enriched.items()
+    for v, i in enriched.items()
 ]
 
-if table:
-    print("\nVulnerability Enriched Report:\n")
-    print(tabulate(
-        table,
-        headers=["ID", "Description", "CVSSv2", "CVSSv3", "Severity", "Exploitability", "Patch", "Source"],
-        tablefmt="grid"
-    ))
-else:
-    print("⚠️ No vulnerabilities found to enrich.")
+print(tabulate(
+    table,
+    headers=["ID", "Severity", "CVSSv3", "Exploitability", "Source", "Description"],
+    tablefmt="grid"
+))
