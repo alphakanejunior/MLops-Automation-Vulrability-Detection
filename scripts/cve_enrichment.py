@@ -35,7 +35,10 @@ os.makedirs(OUTPUT_FILE.parent, exist_ok=True)
 def load_json(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            if not data:
+                raise ValueError("Fichier vide")
+            return data
     except Exception as e:
         print(f"⚠️ Impossible de lire {path}: {e}")
         return {}
@@ -83,25 +86,32 @@ nvd_data = {}
 for nvd_file in glob.glob(f"{args.nvd_db}/*.json"):
     print(f"🔄 Loading {nvd_file}")
     nvd_raw = load_json(nvd_file)
-    for item in nvd_raw.get("vulnerabilities", []):
-        cve = item.get("cve", {})
-        cve_id = cve.get("id")
+    for item in nvd_raw.get("CVE_Items", []):
+        # Récupération de l'ID CVE
+        cve_meta = item.get("cve", {}).get("CVE_data_meta", {})
+        cve_id = cve_meta.get("ID")
         if not cve_id:
             continue
 
-        descs = cve.get("descriptions", [])
+        # Description
+        descs = item.get("cve", {}).get("description", {}).get("description_data", [])
         descr = ""
         for d in descs:
             if d.get("lang") == "en":
                 descr = d.get("value")
                 break
 
-        metrics = item.get("metrics", {})
-        cvss_v3 = metrics.get("cvssMetricV31", [{}])[0].get("cvssData", {})
+        # CVSS v3
+        impact = item.get("impact", {})
+        baseMetricV3 = impact.get("baseMetricV3", {})
+        cvss_v3 = baseMetricV3.get("cvssV3", {})
+
+        # CVSS v2
+        baseMetricV2 = impact.get("baseMetricV2", {})
 
         nvd_data[cve_id] = {
             "description": descr,
-            "cvss_v2": {},
+            "cvss_v2": baseMetricV2,
             "cvss_v3": cvss_v3,
             "severity": cvss_v3.get("baseSeverity", ""),
             "exploitability": "",
@@ -124,7 +134,7 @@ def add_report(path, extractor):
         report = load_json(path_obj)
         all_vulns.update(extractor(report))
     elif path_obj.is_dir():
-        for file in path_obj.glob("**/*"):
+        for file in path_obj.glob("**/*.json"):
             if file.is_file():
                 report = load_json(file)
                 all_vulns.update(extractor(report))
@@ -139,9 +149,11 @@ if args.modelscan_report:
     add_report(args.modelscan_report, extract_modelscan_cves)
 
 if args.container_reports:
-    for file in Path().glob(args.container_reports):
-        report = load_json(file)
-        all_vulns.update(extract_trivy_cves(report))
+    # Récupération récursive des fichiers container
+    for file in Path().rglob(args.container_reports):
+        if file.is_file():
+            report = load_json(file)
+            all_vulns.update(extract_trivy_cves(report))
 
 # ==========================================================
 # ENRICH
