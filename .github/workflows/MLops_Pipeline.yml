@@ -204,96 +204,103 @@ jobs:
           path: reports/container/${{ env.TIMESTAMP }}/
           retention-days: 30
 
-  # =============================================================
-  # Job 5 : CVE Enrichment
-  # =============================================================
+# =============================================================
+# Job 5 : CVE Enrichment
+# =============================================================
   CVEEnrichment:
-    name: CVE Enrichment from Reports
+    name: Enrichissement CVE depuis les rapports
     runs-on: ubuntu-latest
     needs: [CodeScan, DependencyScan, ModelScan, ContainerScan]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # -------------------------------
+    - name: Récupérer le dépôt
+      uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+    # -------------------------------
+    - name: Configurer Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests tqdm tabulate
+    # -------------------------------
+    - name: Installer les dépendances Python
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests tqdm tabulate
 
-# =============================================================
-      - name: Download NVD CVE database (2020-2025)
-        run: |
-          mkdir -p nvd_db
-          for YEAR in 2020 2021 2022 2023 2024 2025; do
-            echo "⬇️ Downloading NVD $YEAR..."
-            curl -L \
-              "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-${YEAR}.json.gz" \
-              -o "nvd_db/nvdcve-2.0-${YEAR}.json.gz"
-            gunzip -f "nvd_db/nvdcve-2.0-${YEAR}.json.gz"
-          done
-# =============================================================
+    # -------------------------------
+    - name: Télécharger et fusionner la base NVD (2020-2025)
+      run: |
+        sudo apt-get update && sudo apt-get install -y jq
+        mkdir -p nvd_db
+        for YEAR in 2020 2021 2022 2023 2024 2025; do
+          echo "⬇️ Téléchargement NVD $YEAR..."
+          curl -L --retry 5 --retry-delay 10 \
+            "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-${YEAR}.json.gz" \
+            -o "nvd_db/nvdcve-2.0-${YEAR}.json.gz"
+          gunzip -f "nvd_db/nvdcve-2.0-${YEAR}.json.gz"
+        done
+        echo "🔀 Fusion des fichiers JSON..."
+        jq -s '{CVE_Items: map(.CVE_Items) | add}' nvd_db/nvdcve-2.0-*.json > nvd_db/nvdcve-2.0-modified.json
+        echo "✅ Base NVD prête"
 
+    # -------------------------------
+    - name: Vérifier la présence de la base NVD
+      run: |
+        if [ ! -f "nvd_db/nvdcve-2.0-modified.json" ]; then
+          echo "❌ Le fichier NVD fusionné est manquant !"
+          exit 1
+        fi
+        echo "✅ NVD JSON prêt"
 
+    # -------------------------------
+    - name: Télécharger les rapports Bandit
+      uses: actions/download-artifact@v4
+      with:
+        name: bandit-report-${{ env.TIMESTAMP }}
+        path: reports/bandit/${{ env.TIMESTAMP }}
 
+    - name: Télécharger les rapports de dépendances
+      uses: actions/download-artifact@v4
+      with:
+        name: dependency-report-${{ env.TIMESTAMP }}
+        path: reports/dependency/${{ env.TIMESTAMP }}
 
+    - name: Télécharger les rapports ModelScan
+      uses: actions/download-artifact@v4
+      with:
+        name: modelscan-report-${{ env.TIMESTAMP }}
+        path: reports/models/${{ env.TIMESTAMP }}/official
 
-      - name: Prepare local NVD JSON
-        run: |
-          mkdir -p nvd_db
-          cp nvd_db_prepared/*.json nvd_db/
-          if [ -z "$(ls -A nvd_db/*.json 2>/dev/null)" ]; then
-            echo "❌ NVD JSON files missing!"
-            exit 1
-          fi
-          echo "✅ NVD JSON files ready"
+    - name: Télécharger les rapports ContainerScan
+      uses: actions/download-artifact@v4
+      with:
+        name: container-scan-${{ env.TIMESTAMP }}
+        path: reports/container/${{ env.TIMESTAMP }}
 
+    # -------------------------------
+    - name: Exécuter l'enrichissement CVE
+      run: |
+        # Récupération des fichiers container JSON sous forme de liste séparée par des virgules
+        CONTAINER_FILES=$(find reports/container/${{ env.TIMESTAMP }}/ -name '*.json' | tr '\n' ',')
+        
+        # Créer le dossier de sortie
+        OUTPUT_DIR="reports/cve_enrichment/${{ env.TIMESTAMP }}"
+        mkdir -p "$OUTPUT_DIR"
 
-# ============================================================
+        # Lancer le script Python
+        python scripts/cve_enrichment.py \
+          --nvd-db "nvd_db/nvdcve-2.0-modified.json" \
+          --bandit-report "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" \
+          --dependency-report "reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json" \
+          --modelscan-report "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" \
+          --container-reports "$CONTAINER_FILES" \
+          --output "$OUTPUT_DIR/enriched_cves.json"
 
-      - name: Download Bandit Report
-        uses: actions/download-artifact@v4
-        with:
-          name: bandit-report-${{ env.TIMESTAMP }}
-          path: reports/bandit/${{ env.TIMESTAMP }}
-
-      - name: Download Dependency Report
-        uses: actions/download-artifact@v4
-        with:
-          name: dependency-report-${{ env.TIMESTAMP }}
-          path: reports/dependency/${{ env.TIMESTAMP }}
-
-      - name: Download ModelScan Report
-        uses: actions/download-artifact@v4
-        with:
-          name: modelscan-report-${{ env.TIMESTAMP }}
-          path: reports/models/${{ env.TIMESTAMP }}/official
-
-      - name: Download ContainerScan Reports
-        uses: actions/download-artifact@v4
-        with:
-          name: container-scan-${{ env.TIMESTAMP }}
-          path: reports/container/${{ env.TIMESTAMP }}
-# =============================================================
-
-
-      - name: Run CVE Enrichment
-        run: |
-          python scripts/cve_enrichment.py \
-            --nvd-db "nvd_db/nvdcve-2.0-modified.json" \
-            --bandit-report "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json" \
-            --dependency-report "reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json" \
-            --modelscan-report "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" \
-            --container-reports "reports/container/${{ env.TIMESTAMP }}/**/*.json" \
-            --output "reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json"
-
-      - name: Upload Enriched CVE Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: enriched-cve-report-${{ env.TIMESTAMP }}
-          path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json
-          retention-days: 30
+    # -------------------------------
+    - name: Télécharger le rapport CVE enrichi
+      uses: actions/upload-artifact@v4
+      with:
+        name: enriched-cve-report-${{ env.TIMESTAMP }}
+        path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json
+        retention-days: 30
