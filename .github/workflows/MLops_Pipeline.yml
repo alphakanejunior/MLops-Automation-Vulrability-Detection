@@ -230,17 +230,17 @@ jobs:
         pip install requests tqdm tabulate
 
     # -------------------------------
-    - name: Télécharger la base NVD 2.0 (2020–2025)
+    - name: Télécharger la base NVD 2.0 (2020-2025)
       run: |
         mkdir -p nvd_db
         for YEAR in 2020 2021 2022 2023 2024 2025; do
-          echo "⬇️ NVD $YEAR"
-          curl -L --retry 5 \
-            https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-${YEAR}.json.gz \
-            -o nvd_db/nvdcve-2.0-${YEAR}.json.gz
-          gunzip -f nvd_db/nvdcve-2.0-${YEAR}.json.gz
+          echo "⬇️ Téléchargement NVD $YEAR..."
+          curl -L --retry 5 --retry-delay 10 \
+            "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-${YEAR}.json.gz" \
+            -o "nvd_db/nvdcve-2.0-${YEAR}.json.gz"
+          gunzip -f "nvd_db/nvdcve-2.0-${YEAR}.json.gz"
         done
-
+        echo "✅ NVD 2.0 prête (fichiers séparés)"
 
     # -------------------------------
     - name: Télécharger les rapports Bandit
