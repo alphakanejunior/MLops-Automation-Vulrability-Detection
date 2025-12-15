@@ -225,6 +225,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests tqdm tabulate
 
+
+
+          
       - name: Prepare local NVD JSON
         run: |
           mkdir -p nvd_db
