@@ -104,7 +104,7 @@ jobs:
       - name: Run ModelScan
         continue-on-error: true
         run: |
-          modelscan scan -p model/ --json > "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" 2>&1 || true
+          modelscan scan -p model/model/ --json > "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" 2>&1 || true
 
       - name: Upload ModelScan Report
         uses: actions/upload-artifact@v4
