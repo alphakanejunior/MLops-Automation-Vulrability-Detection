@@ -85,9 +85,9 @@ jobs:
   # =============================================================
   # Job 3 : ModelScan officiel
   # =============================================================
-# =============================================================
-# Job 3 : ModelScan officiel (corrigé)
-# =============================================================
+    # =============================================================
+    # Job 3 : ModelScan officiel (corrigé et fonctionnel)
+    # =============================================================
   ModelScan:
     name: Model Serialization Security Scan
     runs-on: ubuntu-latest
@@ -113,6 +113,10 @@ jobs:
 
           # Run ModelScan and save TXT
           modelscan scan -p model/model/ | tee "$REPORT_TXT"
+
+          # Export variables pour Python
+          export REPORT_TXT
+          export REPORT_JSON
 
           # Convert TXT -> JSON structuré
           python - << EOF
@@ -171,7 +175,6 @@ jobs:
           name: modelscan-report-${{ env.TIMESTAMP }}
           path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
           retention-days: 30
-
 
 
   # =============================================================
