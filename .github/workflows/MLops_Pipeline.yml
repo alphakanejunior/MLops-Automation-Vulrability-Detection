@@ -85,8 +85,8 @@ jobs:
   # =============================================================
   # Job 3 : ModelScan officiel
   # =============================================================
- # =============================================================
-# Job 3 : ModelScan officiel (version optimisée)
+# =============================================================
+# Job 3 : ModelScan officiel (corrigé)
 # =============================================================
   ModelScan:
     name: Model Serialization Security Scan
@@ -104,33 +104,35 @@ jobs:
       - name: Create Reports Folder
         run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
 
-      - name: Run ModelScan and capture results
+      - name: Run ModelScan and generate JSON compatible CVEEnrichment
         run: |
           REPORT_TXT="reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt"
           REPORT_JSON="reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json"
+
           mkdir -p "$(dirname "$REPORT_TXT")"
+
+          # Run ModelScan and save TXT
           modelscan scan -p model/model/ | tee "$REPORT_TXT"
 
-          # =============================================================
-          # Convert TXT -> JSON structuré avec "vulnerabilities"
-          # =============================================================
-                  python - << 'EOF'
+          # Convert TXT -> JSON structuré
+          python - << EOF
           import json
           import re
+          import os
 
-          txt_file = "$REPORT_TXT"
-          json_file = "$REPORT_JSON"
+          txt_file = os.environ["REPORT_TXT"]
+          json_file = os.environ["REPORT_JSON"]
 
           vulns = []
 
           with open(txt_file, "r") as f:
               lines = f.readlines()
 
+          # Parsing errors
           for line in lines:
               line = line.strip()
               if not line:
                   continue
-              # Si ligne contient une erreur de parsing
               m = re.search(r'Parsing error.*opcode (.+)', line)
               if m:
                   vulns.append({
@@ -140,11 +142,10 @@ jobs:
                       "message": line
                   })
 
-          # Marquer comme clean si aucune vuln détectée
+          # Messages génériques si aucun problème détecté
           if any("No issues found" in l for l in lines):
               pass
           elif not vulns:
-              # Si TXT contient autre type de message, les ajouter en message générique
               for l in lines:
                   if "--- Summary ---" in l or "Scanning" in l:
                       continue
@@ -155,7 +156,7 @@ jobs:
                       "message": l
                   })
 
-          # Générer le JSON final compatible cve_enrichment.py
+          # Générer JSON final
           output = {"vulnerabilities": vulns}
 
           with open(json_file, "w") as f:
@@ -164,12 +165,13 @@ jobs:
           print(f"✅ ModelScan JSON saved to {json_file}")
           EOF
 
-              - name: Upload ModelScan Report
-                uses: actions/upload-artifact@v4
-                with:
-                  name: modelscan-report-${{ env.TIMESTAMP }}
-                  path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
-                  retention-days: 30
+      - name: Upload ModelScan Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: modelscan-report-${{ env.TIMESTAMP }}
+          path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
+          retention-days: 30
+
 
 
   # =============================================================
