@@ -85,6 +85,9 @@ jobs:
   # =============================================================
   # Job 3 : ModelScan officiel
   # =============================================================
+ # =============================================================
+# Job 3 : ModelScan officiel (version optimisée)
+# =============================================================
   ModelScan:
     name: Model Serialization Security Scan
     runs-on: ubuntu-latest
@@ -101,48 +104,73 @@ jobs:
       - name: Create Reports Folder
         run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
 
-      - name: Run ModelScan
+      - name: Run ModelScan and capture results
         run: |
-          mkdir -p reports/models/${{ env.TIMESTAMP }}/official
-          modelscan scan -p model/model/ | tee "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt"
-            
-      - name: Convert ModelScan TXT to JSON
-        run: |
-          python - << 'EOF'
+          REPORT_TXT="reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt"
+          REPORT_JSON="reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json"
+          mkdir -p "$(dirname "$REPORT_TXT")"
+          modelscan scan -p model/model/ | tee "$REPORT_TXT"
+
+          # =============================================================
+          # Convert TXT -> JSON structuré avec "vulnerabilities"
+          # =============================================================
+                  python - << 'EOF'
           import json
           import re
 
-          txt_file = "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt"
-          json_file = "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json"
+          txt_file = "$REPORT_TXT"
+          json_file = "$REPORT_JSON"
 
-          results = []
+          vulns = []
 
           with open(txt_file, "r") as f:
-              for line in f:
-                  line = line.strip()
-                  if not line:
+              lines = f.readlines()
+
+          for line in lines:
+              line = line.strip()
+              if not line:
+                  continue
+              # Si ligne contient une erreur de parsing
+              m = re.search(r'Parsing error.*opcode (.+)', line)
+              if m:
+                  vulns.append({
+                      "id": f"modelscan-parsing-error-{m.group(1)}",
+                      "cve": f"modelscan-parsing-error-{m.group(1)}",
+                      "file": "",
+                      "message": line
+                  })
+
+          # Marquer comme clean si aucune vuln détectée
+          if any("No issues found" in l for l in lines):
+              pass
+          elif not vulns:
+              # Si TXT contient autre type de message, les ajouter en message générique
+              for l in lines:
+                  if "--- Summary ---" in l or "Scanning" in l:
                       continue
-                  # Exemple simple : découpe par ": " si la sortie est "Clé: Valeur"
-                  if ": " in line:
-                      key, value = line.split(": ", 1)
-                      results.append({ "key": key, "value": value })
-                  else:
-                      results.append({ "message": line })
+                  vulns.append({
+                      "id": f"modelscan-message-{hash(l)}",
+                      "cve": f"modelscan-message-{hash(l)}",
+                      "file": "",
+                      "message": l
+                  })
+
+          # Générer le JSON final compatible cve_enrichment.py
+          output = {"vulnerabilities": vulns}
 
           with open(json_file, "w") as f:
-              json.dump(results, f, indent=2)
+              json.dump(output, f, indent=2)
 
-          print(f"JSON saved to {json_file}")
+          print(f"✅ ModelScan JSON saved to {json_file}")
           EOF
 
+              - name: Upload ModelScan Report
+                uses: actions/upload-artifact@v4
+                with:
+                  name: modelscan-report-${{ env.TIMESTAMP }}
+                  path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
+                  retention-days: 30
 
-
-      - name: Upload ModelScan Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: modelscan-report-${{ env.TIMESTAMP }}
-          path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
-          retention-days: 30
 
   # =============================================================
   # Job 4 : ContainerScan (Trivy)
