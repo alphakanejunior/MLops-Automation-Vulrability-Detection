@@ -102,9 +102,10 @@ jobs:
         run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
 
       - name: Run ModelScan
-        continue-on-error: true
         run: |
-          modelscan scan -p model/model/ --json > "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json" 2>&1 || true
+          mkdir -p reports/models/${{ env.TIMESTAMP }}/official
+          modelscan scan -p model/model/ --json | tee "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json"
+
 
       - name: Upload ModelScan Report
         uses: actions/upload-artifact@v4
