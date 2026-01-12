@@ -104,7 +104,37 @@ jobs:
       - name: Run ModelScan
         run: |
           mkdir -p reports/models/${{ env.TIMESTAMP }}/official
-          modelscan scan -p model/model/ --json | tee "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json"
+          modelscan scan -p model/model/ | tee "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt"
+            
+      - name: Convert ModelScan TXT to JSON
+        run: |
+          python - << 'EOF'
+          import json
+          import re
+
+          txt_file = "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt"
+          json_file = "reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json"
+
+          results = []
+
+          with open(txt_file, "r") as f:
+              for line in f:
+                  line = line.strip()
+                  if not line:
+                      continue
+                  # Exemple simple : découpe par ": " si la sortie est "Clé: Valeur"
+                  if ": " in line:
+                      key, value = line.split(": ", 1)
+                      results.append({ "key": key, "value": value })
+                  else:
+                      results.append({ "message": line })
+
+          with open(json_file, "w") as f:
+              json.dump(results, f, indent=2)
+
+          print(f"JSON saved to {json_file}")
+          EOF
+
 
 
       - name: Upload ModelScan Report
