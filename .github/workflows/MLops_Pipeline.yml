@@ -167,7 +167,6 @@ jobs:
           python scripts/cve_enrichment.py \
             --nvd-db "nvd_db" \
             --bandit-report "reports/bandit/${{ env.TIMESTAMP }}" \
-            --dependency-report "reports/dependency/${{ env.TIMESTAMP }}" \
             --output "$OUTPUT_DIR/enriched_code_cves.json"
 
       # -------------------------------
