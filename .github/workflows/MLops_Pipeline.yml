@@ -157,15 +157,6 @@ jobs:
           path: reports/bandit/${{ env.TIMESTAMP }}
 
       # -------------------------------
-      # Étape 6 : Télécharger les rapports de dépendances (optionnel)
-      # Si pip-audit est utilisé, on peut l'inclure ici pour enrichissement
-      - name: Télécharger les rapports de dépendances (optionnel)
-        uses: actions/download-artifact@v4
-        with:
-          name: dependency-report-${{ env.TIMESTAMP }}
-          path: reports/dependency/${{ env.TIMESTAMP }}
-
-      # -------------------------------
       # Étape 7 : Exécuter l'enrichissement CVE pour le code
       # Utilisation du script cve_enrichment.py pour fusionner et enrichir le rapport Bandit
       - name: Exécuter l'enrichissement CVE pour le code
