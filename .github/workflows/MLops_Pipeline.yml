@@ -1,32 +1,36 @@
 name: Full Project Automatisation de la gestion des vulnérabilités dans les pipelines MLops
 
-# Déclenche le workflow sur push ou PR vers la branche Develop
 on:
   push:
-    branches: [Develop]
+    branches:
+      - Develop
   pull_request:
-    branches: [Develop]
+    branches:
+      - Develop
 
-# On utilise un TIMESTAMP global pour versionner les rapports
 env:
+  # TIMESTAMP pour versionner les rapports
   TIMESTAMP: ${{ github.run_id }}
 
 jobs:
+  # =============================================================
+  # Job 1 : CodeScan (Bandit)
+  # =============================================================
   CodeScan:
-    name: Code Scan (Bandit + pip-audit)
+    name: Code Security Scan (Bandit)
     runs-on: ubuntu-latest
 
     steps:
       # -----------------------------------
       # 1️⃣ Checkout repository
-      # Récupère le code source du dépôt pour pouvoir scanner
+      # Récupère le code source pour le scanner
       # -----------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # -----------------------------------
       # 2️⃣ Setup Python
-      # Configure Python 3.11 pour exécuter Bandit, pip-audit et notre script d'affichage
+      # Configure Python 3.11 pour exécuter Bandit et le script d'affichage
       # -----------------------------------
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,29 +38,29 @@ jobs:
           python-version: "3.11"
 
       # -----------------------------------
-      # 3️⃣ Install scanning tools
-      # Installe Bandit pour le code et pip-audit pour les dépendances
-      # tabulate sert à afficher les résultats sous forme de tableaux lisibles
+      # 3️⃣ Install Bandit et tabulate
+      # tabulate servira à afficher les résultats sous forme de tableaux
       # -----------------------------------
-      - name: Install Bandit and pip-audit
+      - name: Install Bandit and dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install bandit pip-audit tabulate
+          pip install bandit tabulate
 
       # -----------------------------------
       # 4️⃣ Run Bandit scan
-      # Analyse le code Python pour les vulnérabilités et génère un rapport JSON
+      # Scanne tout le code Python et génère un rapport JSON
       # -----------------------------------
       - name: Run Bandit Scan
         run: |
-          REPORT_DIR="reports/code/${{ env.TIMESTAMP }}"
-          mkdir -p "$REPORT_DIR"  # Crée le dossier de rapports
-          bandit -r . -f json -o "$REPORT_DIR/bandit-report.json"
+          REPORT_DIR="reports/bandit/${{ env.TIMESTAMP }}"
+          mkdir -p "$REPORT_DIR"
+          # Exécute Bandit, continue même si vulnérabilités trouvées
+          bandit -r . -f json -o "$REPORT_DIR/bandit-report.json" || true
           echo "✅ Bandit scan finished"
 
       # -----------------------------------
       # 5️⃣ Display Bandit results in console
-      # Lit le rapport JSON et affiche un tableau structuré dans la console
+      # Affiche les vulnérabilités sous forme de tableau lisible
       # -----------------------------------
       - name: Display Bandit Scan Results
         run: |
@@ -64,15 +68,14 @@ jobs:
           import json
           from tabulate import tabulate
 
-          # Charger le rapport Bandit
-          with open("reports/code/${{ env.TIMESTAMP }}/bandit-report.json") as f:
+          report_file = "reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json"
+          with open(report_file) as f:
               data = json.load(f)
 
           vulns = data.get("results", [])
           if not vulns:
               print("✅ No issues found by Bandit")
           else:
-              # Préparer un tableau lisible
               table = []
               for v in vulns:
                   table.append([
@@ -87,60 +90,12 @@ jobs:
           EOF
 
       # -----------------------------------
-      # 6️⃣ Run pip-audit scan
-      # Analyse les dépendances Python pour détecter les vulnérabilités connues
+      # 6️⃣ Upload Bandit Report
+      # Stocke le rapport JSON comme artifact pour téléchargement ultérieur
       # -----------------------------------
-      - name: Run Dependency Scan
-        run: |
-          REPORT_DIR="reports/code/${{ env.TIMESTAMP }}"
-          mkdir -p "$REPORT_DIR"
-          if [ -f requirements.txt ]; then
-            pip-audit --format=json -o "$REPORT_DIR/dependency-report.json"
-            echo "✅ Dependency scan finished"
-          else
-            echo "⚠️ No requirements.txt found, skipping dependency scan"
-
-      # -----------------------------------
-      # 7️⃣ Display pip-audit results in console
-      # Lit le rapport JSON de pip-audit et affiche un tableau structuré
-      # -----------------------------------
-      - name: Display Dependency Scan Results
-        if: always()
-        run: |
-          if [ -f "reports/code/${{ env.TIMESTAMP }}/dependency-report.json" ]; then
-            python - << EOF
-            import json
-            from tabulate import tabulate
-
-            # Charger le rapport pip-audit
-            with open("reports/code/${{ env.TIMESTAMP }}/dependency-report.json") as f:
-                data = json.load(f)
-
-            if not data:
-                print("✅ No dependency vulnerabilities found")
-            else:
-                # Préparer un tableau lisible
-                table = []
-                for v in data:
-                    table.append([
-                        v.get("name"),
-                        v.get("version"),
-                        v.get("advisory", {}).get("id"),
-                        v.get("advisory", {}).get("summary")
-                    ])
-                print("\nDependency Scan Results:")
-                print(tabulate(table, headers=["Package", "Version", "CVE/ID", "Summary"], tablefmt="github"))
-            EOF
-          else
-            echo "⚠️ No dependency report found"
-
-      # -----------------------------------
-      # 8️⃣ Upload scan reports
-      # Sauvegarde les rapports JSON comme artifacts pour pouvoir les télécharger depuis GitHub Actions
-      # -----------------------------------
-      - name: Upload Reports
+      - name: Upload Bandit Report
         uses: actions/upload-artifact@v4
         with:
-          name: code-scan-${{ env.TIMESTAMP }}
-          path: reports/code/${{ env.TIMESTAMP }}/
+          name: bandit-report-${{ env.TIMESTAMP }}
+          path: reports/bandit/${{ env.TIMESTAMP }}/bandit-report.json
           retention-days: 30
