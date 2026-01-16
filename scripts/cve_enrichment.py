@@ -24,7 +24,16 @@ for nvd_file in glob.glob(os.path.join(args.nvd_db, "*.json")):
         data = json.load(f)
         for item in data.get("CVE_Items", []):
             cve_id = item["cve"]["CVE_data_meta"]["ID"]
-            nvd_db[cve_id] = item
+            # Extraire les CWE pour chaque CVE
+            cwes = []
+            for pt in item.get("cve", {}).get("problemtype", {}).get("problemtype_data", []):
+                for desc in pt.get("description", []):
+                    if desc.get("value", "").startswith("CWE-"):
+                        cwes.append(desc["value"].replace("CWE-", ""))
+            nvd_db[cve_id] = {
+                "item": item,
+                "cwes": cwes
+            }
 print(f"📊 CVE NVD chargées : {len(nvd_db)}")
 
 # ==========================
@@ -41,8 +50,10 @@ print(f"🔍 Vulnérabilités détectées par Bandit : {len(bandit_results)}")
 # Enrichissement
 # ==========================
 enriched = {}
+
 for v in bandit_results:
     cwe_id = str(v.get("issue_cwe", {}).get("id", "N/A"))
+
     enriched[cwe_id] = {
         "description": "",
         "cvss_score": "",
@@ -59,24 +70,26 @@ for v in bandit_results:
         "more_info": v.get("more_info")
     }
 
-    # Mapper avec NVD si possible
-    for cve_id, item in nvd_db.items():
-        # Extraire CWEs du CVE NVD
-        cwes = []
-        for pt in item.get("cve", {}).get("problemtype", {}).get("problemtype_data", []):
-            for desc in pt.get("description", []):
-                if "cweId" in desc:
-                    cwes.append(desc["cweId"].replace("CWE-", ""))
-        if cwe_id in cwes:
-            # Impact CVSSv3
+    # Mapper avec NVD
+    for cve_id, nvd_entry in nvd_db.items():
+        if cwe_id in nvd_entry["cwes"]:
+            item = nvd_entry["item"]
+            # Récupérer description
+            desc = item.get("cve", {}).get("description", {}).get("description_data", [])
+            description = desc[0]["value"] if desc else ""
+            # Récupérer CVSSv3
             cvss = item.get("impact", {}).get("baseMetricV3", {}).get("cvssV3", {})
+            severity = cvss.get("baseSeverity", "")
+            baseScore = cvss.get("baseScore", "")
+            vector = cvss.get("vectorString", "")
+            exploitability = item.get("impact", {}).get("baseMetricV3", {}).get("exploitabilityScore", "")
+
             enriched[cwe_id].update({
-                "description": item["cve"]["description"]["description_data"][0]["value"],
-                "cvss_score": cvss.get("baseScore", ""),
-                "cvss_vector": cvss.get("vectorString", ""),
-                "severity": cvss.get("baseSeverity", ""),
-                "exploitability": item.get("impact", {}).get("baseMetricV3", {}).get("exploitabilityScore", ""),
-                "patch": "",  # à remplir si info dispo
+                "description": description,
+                "cvss_score": baseScore,
+                "cvss_vector": vector,
+                "severity": severity,
+                "exploitability": exploitability,
                 "source": "NVD"
             })
             break  # on prend le premier CVE trouvé
