@@ -101,6 +101,94 @@ jobs:
           retention-days: 30
 
   # =============================================================
+  # Job : Dependency Scan (Trivy)
+  # =============================================================
+  DependencyScan:
+    name: Dependency Security Scan (Trivy)
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------------
+      # 1️⃣ Checkout repository
+      # -----------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------
+      # 2️⃣ Installer Trivy
+      # -----------------------------------
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.1_Linux-64bit.deb
+          sudo dpkg -i trivy_0.50.1_Linux-64bit.deb
+
+      # -----------------------------------
+      # 3️⃣ Scan des dépendances (filesystem)
+      # -----------------------------------
+      - name: Run Trivy Dependency Scan
+        run: |
+          REPORT_DIR="reports/dependency/${{ env.TIMESTAMP }}"
+          mkdir -p "$REPORT_DIR"
+
+          trivy fs . \
+            --scanners vuln \
+            --format json \
+            --output "$REPORT_DIR/dependency-report.json" \
+            --severity LOW,MEDIUM,HIGH,CRITICAL \
+            --no-progress || true
+
+          echo "✅ Dependency scan finished"
+
+      # -----------------------------------
+      # 4️⃣ Affichage console structuré
+      # -----------------------------------
+      - name: Display Dependency Scan Results
+        run: |
+          python - << EOF
+          import json
+          from tabulate import tabulate
+
+          report = "reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json"
+
+          with open(report) as f:
+              data = json.load(f)
+
+          table = []
+          for r in data.get("Results", []):
+              for v in r.get("Vulnerabilities", []) or []:
+                  table.append([
+                      v.get("PkgName"),
+                      v.get("InstalledVersion"),
+                      v.get("VulnerabilityID"),
+                      v.get("Severity"),
+                      v.get("Title", "")[:80]
+                  ])
+
+          if not table:
+              print("✅ No dependency vulnerabilities found")
+          else:
+              print("\n📦 Dependency Scan Results:")
+              print(tabulate(
+                  table,
+                  headers=["Package", "Version", "CVE", "Severity", "Description"],
+                  tablefmt="github"
+              ))
+          EOF
+
+      # -----------------------------------
+      # 5️⃣ Upload Dependency Report
+      # -----------------------------------
+      - name: Upload Dependency Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-report-${{ env.TIMESTAMP }}
+          path: reports/dependency/${{ env.TIMESTAMP }}/dependency-report.json
+          retention-days: 30
+
+
+  # =============================================================
   # Job : Enrichissement CVE pour le code uniquement
   # =============================================================
   CVEEnrichment:
