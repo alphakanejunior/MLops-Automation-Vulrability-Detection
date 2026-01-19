@@ -120,6 +120,7 @@ jobs:
   DependencyScan:
     name: Dependency Vulnerability Scan (Trivy)
     runs-on: ubuntu-latest
+    needs: [CodeScan]
 
     steps:
       # ---------------------------------------------------------
@@ -220,7 +221,9 @@ jobs:
   CVEEnrichment:
     name: Enrichissement CVE pour le code
     runs-on: ubuntu-latest
-    needs: [CodeScan]
+    needs:
+    - CodeScan
+    - DependencyScan
 
     steps:
       # ---------------------------------------------------------
