@@ -213,107 +213,107 @@ jobs:
           path: reports/dependency/${{ env.TIMESTAMP }}/trivy-dependency-report.json
           retention-days: 30
 
-# =============================================================
-# Job 4 : ModelScan
-# Objectif : Scanner tous les fichiers modèles ML et générer un JSON
-# =============================================================
-ModelScan:
-  name: ML Model Security Scan (ModelScan)
-  runs-on: ubuntu-latest
-  needs: [CodeScan, DependencyScan]
+  # =============================================================
+  # Job 4 : ModelScan
+  # Objectif : Scanner tous les fichiers modèles ML et générer un JSON
+  # =============================================================
+  ModelScan:
+    name: ML Model Security Scan (ModelScan)
+    runs-on: ubuntu-latest
+    needs: [CodeScan, DependencyScan]
 
-  steps:
-    # ---------------------------------------------------------
-    # Étape 1 : Récupération du dépôt
-    # ---------------------------------------------------------
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    steps:
+      # ---------------------------------------------------------
+      # Étape 1 : Récupération du dépôt
+      # ---------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    # ---------------------------------------------------------
-    # Étape 2 : Installation de ModelScan
-    # ---------------------------------------------------------
-    - name: Install ModelScan
-      run: |
-        python -m pip install --upgrade pip
-        pip install modelscan
-        modelscan --version
+      # ---------------------------------------------------------
+      # Étape 2 : Installation de ModelScan
+      # ---------------------------------------------------------
+      - name: Install ModelScan
+        run: |
+          python -m pip install --upgrade pip
+          pip install modelscan
+          modelscan --version
 
-    # ---------------------------------------------------------
-    # Étape 3 : Scan de tous les modèles et génération JSON
-    # ---------------------------------------------------------
-    - name: Scan all ML models and generate JSON report
-      run: |
-        REPORT_DIR="reports/modelscan/${{ env.TIMESTAMP }}"
-        mkdir -p "$REPORT_DIR"
-        JSON_OUTPUT="$REPORT_DIR/modelscan-report.json"
+      # ---------------------------------------------------------
+      # Étape 3 : Scan de tous les modèles et génération JSON
+      # ---------------------------------------------------------
+      - name: Scan all ML models and generate JSON report
+        run: |
+          REPORT_DIR="reports/modelscan/${{ env.TIMESTAMP }}"
+          mkdir -p "$REPORT_DIR"
+          JSON_OUTPUT="$REPORT_DIR/modelscan-report.json"
 
-        python - << 'EOF'
-        import os
-        import glob
-        import json
-        import subprocess
+          python - << 'EOF'
+          import os
+          import glob
+          import json
+          import subprocess
 
-        model_dir = "models/model"
-        report = []
+          model_dir = "model/model"
+          report = []
 
-        # Parcours de tous les fichiers dans le dossier des modèles
-        for model_file in glob.glob(f"{model_dir}/**/*", recursive=True):
-            if os.path.isfile(model_file):
-                print(f"⬇️ Scanning {model_file} ...")
-                try:
-                    result = subprocess.run(
-                        ["modelscan", "scan", "-p", model_file],
-                        capture_output=True,
-                        text=True
-                    )
-                    # Chaque entrée JSON contiendra : file, raw_output
-                    report.append({
-                        "file": model_file,
-                        "output": result.stdout.strip()
-                    })
-                except Exception as e:
-                    report.append({
-                        "file": model_file,
-                        "output": "",
-                        "error": str(e)
-                    })
+          # Parcours de tous les fichiers dans le dossier des modèles
+          for model_file in glob.glob(f"{model_dir}/**/*", recursive=True):
+              if os.path.isfile(model_file):
+                  print(f"⬇️ Scanning {model_file} ...")
+                  try:
+                      result = subprocess.run(
+                          ["modelscan", "scan", "-p", model_file],
+                          capture_output=True,
+                          text=True
+                      )
+                      # Chaque entrée JSON contiendra : file, raw_output
+                      report.append({
+                          "file": model_file,
+                          "output": result.stdout.strip()
+                      })
+                  except Exception as e:
+                      report.append({
+                          "file": model_file,
+                          "output": "",
+                          "error": str(e)
+                      })
 
-        # Écriture du JSON final pour tous les modèles
-        os.makedirs(os.path.dirname(JSON_OUTPUT), exist_ok=True)
-        with open(JSON_OUTPUT, "w") as f:
-            json.dump(report, f, indent=2)
+          # Écriture du JSON final pour tous les modèles
+          os.makedirs(os.path.dirname(JSON_OUTPUT), exist_ok=True)
+          with open(JSON_OUTPUT, "w") as f:
+              json.dump(report, f, indent=2)
 
-        print(f"\n✅ ModelScan JSON report generated at {JSON_OUTPUT}")
-        EOF
+          print(f"\n✅ ModelScan JSON report generated at {JSON_OUTPUT}")
+          EOF
 
-    # ---------------------------------------------------------
-    # Étape 4 : Affichage résumé simple dans la console
-    # ---------------------------------------------------------
-    - name: Display ModelScan summary
-      run: |
-        python - << 'EOF'
-        import json
+      # ---------------------------------------------------------
+      # Étape 4 : Affichage résumé simple dans la console
+      # ---------------------------------------------------------
+      - name: Display ModelScan summary
+        run: |
+          python - << 'EOF'
+          import json
 
-        report_file = "reports/modelscan/${{ env.TIMESTAMP }}/modelscan-report.json"
-        with open(report_file) as f:
-            data = json.load(f)
+          report_file = "reports/modelscan/${{ env.TIMESTAMP }}/modelscan-report.json"
+          with open(report_file) as f:
+              data = json.load(f)
 
-        print("\n📊 ML MODEL SCAN SUMMARY")
-        for entry in data:
-            file = entry.get("file")
-            output = entry.get("output", "")
-            print(f"{file} => {len(output.splitlines())} lines of scan output")
-        EOF
+          print("\n📊 ML MODEL SCAN SUMMARY")
+          for entry in data:
+              file = entry.get("file")
+              output = entry.get("output", "")
+              print(f"{file} => {len(output.splitlines())} lines of scan output")
+          EOF
 
-    # ---------------------------------------------------------
-    # Étape 5 : Archivage du rapport JSON
-    # ---------------------------------------------------------
-    - name: Upload ModelScan report
-      uses: actions/upload-artifact@v4
-      with:
-        name: modelscan-report-${{ env.TIMESTAMP }}
-        path: reports/modelscan/${{ env.TIMESTAMP }}/modelscan-report.json
-        retention-days: 30
+      # ---------------------------------------------------------
+      # Étape 5 : Archivage du rapport JSON
+      # ---------------------------------------------------------
+      - name: Upload ModelScan report
+        uses: actions/upload-artifact@v4
+        with:
+          name: modelscan-report-${{ env.TIMESTAMP }}
+          path: reports/modelscan/${{ env.TIMESTAMP }}/modelscan-report.json
+          retention-days: 30
 
 
   # =============================================================
