@@ -215,15 +215,13 @@ jobs:
 
   # =============================================================
   # Job 4 : ModelScan
-  # Objectif : Analyser les modèles ML pour vulnérabilités
-  # Outil    : modelscan (ex: Python CLI)
+  # Objectif : Analyser les modèles ML pour vulnérabilités et bonnes pratiques
+  # Outil    : modelscan
   # =============================================================
   ModelScan:
-    name: Model Security Scan
+    name: Scan des modèles ML (ModelScan)
     runs-on: ubuntu-latest
-    needs:
-      - CodeScan
-      - DependencyScan
+    needs: [CodeScan, DependencyScan]
 
     steps:
       # ---------------------------------------------------------
@@ -233,81 +231,90 @@ jobs:
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------
-      # Étape 2 : Configurer Python
+      # Étape 2 : Installation Python et modelscan
       # ---------------------------------------------------------
-      - name: Set up Python
+      - name: Configurer Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # ---------------------------------------------------------
-      # Étape 3 : Installer ModelScan (Python)
-      # ---------------------------------------------------------
-      - name: Install ModelScan
+      - name: Installer ModelScan
         run: |
           python -m pip install --upgrade pip
           pip install modelscan tabulate
 
       # ---------------------------------------------------------
-      # Étape 4 : Créer dossier de rapports
-      # ---------------------------------------------------------
-      - name: Prepare output directory
-        run: |
-          REPORT_DIR="reports/modelscan/${{ env.TIMESTAMP }}"
-          mkdir -p "$REPORT_DIR"
-
-      # ---------------------------------------------------------
-      # Étape 5 : Exécution du scan modèle
+      # Étape 3 : Exécution du scan sur tous les modèles
       # ---------------------------------------------------------
       - name: Run ModelScan
         run: |
           REPORT_DIR="reports/modelscan/${{ env.TIMESTAMP }}"
-          MODEL_PATH="models/my_model.pkl"  # <-- Mettre le chemin de ton modèle
-          modelscan scan "$MODEL_PATH" --output "$REPORT_DIR/modelscan-report.json" || true
-          echo "✅ ModelScan finished"
+          mkdir -p "$REPORT_DIR"
+
+          # On prend tous les fichiers du dossier models/model/
+          MODEL_FILES=$(find model/model -type f)
+
+          if [ -z "$MODEL_FILES" ]; then
+            echo "⚠️ Aucun modèle trouvé dans models/model/"
+          else
+            for model_file in $MODEL_FILES; do
+              echo "⬇️ Scanning $model_file ..."
+              modelscan scan "$model_file" --output "$REPORT_DIR/$(basename $model_file)-report.json" || true
+            done
+            echo "✅ ModelScan finished"
+          fi
 
       # ---------------------------------------------------------
-      # Étape 6 : Affichage des résultats ModelScan
+      # Étape 4 : Affichage des résultats
       # ---------------------------------------------------------
       - name: Display ModelScan Results
         run: |
-          python - << 'EOF'
-          import json
-          from tabulate import tabulate
+          REPORT_DIR="reports/modelscan/${{ env.TIMESTAMP }}"
+          REPORT_FILES=$(ls $REPORT_DIR/*-report.json 2>/dev/null || true)
 
-          report_file = "reports/modelscan/${{ env.TIMESTAMP }}/modelscan-report.json"
-          with open(report_file) as f:
-              data = json.load(f)
+          if [ -z "$REPORT_FILES" ]; then
+            echo "⚠️ Aucun rapport ModelScan trouvé"
+          else
+            python - << 'EOF'
+            import glob, json
+            from tabulate import tabulate
 
-          issues = data.get("issues", [])
-          if not issues:
-              print("✅ No issues found in model")
-          else:
-              table = []
-              for i in issues:
-                  table.append([
-                      i.get("name"),
-                      i.get("type"),
-                      i.get("severity"),
-                      i.get("description")[:120]
-                  ])
-              print("\n🔬 ModelScan Results:")
-              print(tabulate(
-                  table,
-                  headers=["Name", "Type", "Severity", "Description"],
-                  tablefmt="github"
-              ))
-          EOF
+            report_files = glob.glob("$REPORT_DIR/*-report.json")
+            table = []
+
+            for f in report_files:
+                with open(f) as file:
+                    data = json.load(file)
+                for i in data.get("issues", []):
+                    table.append([
+                        i.get("name"),
+                        i.get("type"),
+                        i.get("severity"),
+                        i.get("description", "")[:120]
+                    ])
+
+            if table:
+                print("\n🔬 ModelScan Results:")
+                print(tabulate(
+                    table,
+                    headers=["Name", "Type", "Severity", "Description"],
+                    tablefmt="github"
+                ))
+            else:
+                print("✅ Aucun problème détecté dans les modèles")
+            EOF
+          fi
 
       # ---------------------------------------------------------
-      # Étape 7 : Upload du rapport JSON
+      # Étape 5 : Archivage des rapports
       # ---------------------------------------------------------
       - name: Upload ModelScan Report
         uses: actions/upload-artifact@v4
         with:
           name: modelscan-report-${{ env.TIMESTAMP }}
-          path: reports/modelscan/${{ env.TIMESTAMP }}/modelscan-report.json
+          path: reports/modelscan/${{ env.TIMESTAMP }}/*.json
           retention-days: 30
+
 
 
   # =============================================================
@@ -321,6 +328,7 @@ jobs:
     needs:
     - CodeScan
     - DependencyScan
+    - ModelScan
 
     steps:
       # ---------------------------------------------------------
