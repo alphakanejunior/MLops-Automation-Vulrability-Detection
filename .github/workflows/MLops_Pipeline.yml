@@ -271,6 +271,15 @@ jobs:
         with:
           name: bandit-report-${{ env.TIMESTAMP }}
           path: reports/bandit/${{ env.TIMESTAMP }}
+      
+      # ---------------------------------------------------------
+      # Télécharger le rapport Trivy (dépendances)
+      # ---------------------------------------------------------
+      - name: Télécharger le rapport Trivy
+        uses: actions/download-artifact@v4
+        with:
+          name: trivy-dependency-report-${{ env.TIMESTAMP }}
+          path: reports/dependency/${{ env.TIMESTAMP }}
 
       # ---------------------------------------------------------
       # Étape 6 : Enrichissement CVE (code uniquement)
@@ -283,6 +292,7 @@ jobs:
           python scripts/cve_enrichment.py \
             --nvd-db "nvd_db" \
             --bandit-report "reports/bandit/${{ env.TIMESTAMP }}" \
+            --trivy-report "reports/dependency/${{ env.TIMESTAMP }}" \
             --output "$OUTPUT_DIR/enriched_code_cves.json"
 
       # ---------------------------------------------------------
