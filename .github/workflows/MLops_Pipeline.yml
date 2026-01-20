@@ -254,62 +254,39 @@ jobs:
         run: |
           REPORT_DIR="reports/modelscan/${{ env.TIMESTAMP }}"
           OUTPUT_FILE="$REPORT_DIR/modelscan-report.json"
-          MODEL_FILES=$(find model/model -type f)
+          mkdir -p "$REPORT_DIR"
 
           echo "[]" > "$OUTPUT_FILE"  # fichier JSON vide initial
+
+          MODEL_FILES=$(find models/model -type f)
           for model_file in $MODEL_FILES; do
             echo "⬇️ Scanning $model_file ..."
-            # Scanner le modèle et récupérer JSON
-            MODEL_JSON=$(modelscan scan "$model_file" --json 2>/dev/null || echo "{}")
-            # Fusionner dans le fichier unique
-            python - << EOF
-              import json
-              with open("$OUTPUT_FILE", "r") as f:
-                  all_data = json.load(f)
 
-              new_data = json.loads("""$MODEL_JSON""")
-              if isinstance(new_data, dict) and "issues" in new_data:
-                  all_data.extend(new_data["issues"])
+            TMP_FILE=$(mktemp)
+            # Scanner le modèle et écrire JSON temporaire
+            modelscan scan "$model_file" --json > "$TMP_FILE" 2>/dev/null || echo "{}" > "$TMP_FILE"
 
-              with open("$OUTPUT_FILE", "w") as f:
-                  json.dump(all_data, f, indent=2)
-              EOF
-                      done
+            # Fusionner dans le fichier final via Python
+            python - << PY
+          import json
+          with open("$OUTPUT_FILE") as f:
+              all_data = json.load(f)
 
-                      echo "✅ ModelScan terminé. Rapport unique : $OUTPUT_FILE"
+          with open("$TMP_FILE") as f:
+              model_data = json.load(f)
 
-                  # ---------------------------------------------------------
-                  # Étape 5 : Affichage des résultats ModelScan dans la console
-                  # ---------------------------------------------------------
-                  - name: Afficher les résultats ModelScan
-                    run: |
-                      REPORT_FILE="reports/modelscan/${{ env.TIMESTAMP }}/modelscan-report.json"
-                      python - << EOF
-              import json
-              from tabulate import tabulate
+          if isinstance(model_data, dict) and "issues" in model_data:
+              all_data.extend(model_data["issues"])
 
-              with open("$REPORT_FILE") as f:
-                  data = json.load(f)
+          with open("$OUTPUT_FILE", "w") as f:
+              json.dump(all_data, f, indent=2)
+          PY
 
-              table = []
-              for i in data:
-                  table.append([
-                      i.get("name"),
-                      i.get("type"),
-                      i.get("severity"),
-                      i.get("description", "")[:120]  # tronquer pour console
-                  ])
+                rm -f "$TMP_FILE"
+              done
 
-              if table:
-                  print("\n🔬 ModelScan Results:")
-                  print(tabulate(
-                      table,
-                      headers=["Name", "Type", "Severity", "Description"],
-                      tablefmt="github"
-                  ))
-              else:
-                  print("✅ Aucun problème détecté dans les modèles")
-              EOF
+              echo "✅ ModelScan terminé. Rapport unique : $OUTPUT_FILE"
+
 
       # ---------------------------------------------------------
       # Étape 6 : Archivage du rapport ModelScan unique
