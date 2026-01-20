@@ -9,12 +9,13 @@ from tabulate import tabulate
 # Arguments
 # ==========================================================
 parser = argparse.ArgumentParser(
-    description="CVE Enrichment for Code (Bandit), Dependencies (Trivy) and Models (ModelScan)"
+    description="CVE Enrichment for Code (Bandit), Dependencies (Trivy), Models (ModelScan) and Containers (Trivy)"
 )
 parser.add_argument("--nvd-db", required=True, help="Folder containing NVD 2.0 JSON files")
 parser.add_argument("--bandit-report", required=True, help="Bandit report folder or file")
 parser.add_argument("--trivy-report", required=True, help="Trivy report folder or file")
 parser.add_argument("--modelscan-report", required=True, help="ModelScan report folder or file")
+parser.add_argument("--container-reports", required=False, help="Folder containing ContainerScan JSON reports")
 parser.add_argument("--output", required=True, help="Output enriched JSON file")
 args = parser.parse_args()
 
@@ -23,11 +24,9 @@ args = parser.parse_args()
 # ==========================================================
 print("🔄 Chargement NVD 2.0 (CWE mapping)…")
 nvd_cwe_index = {}
-
 for nvd_file in glob.glob(os.path.join(args.nvd_db, "*.json")):
     with open(nvd_file, "r", encoding="utf-8") as f:
         data = json.load(f)
-
     for vuln in data.get("vulnerabilities", []):
         cve = vuln.get("cve", {})
         weaknesses = cve.get("weaknesses", [])
@@ -36,7 +35,6 @@ for nvd_file in glob.glob(os.path.join(args.nvd_db, "*.json")):
                 if desc.get("value", "").startswith("CWE-"):
                     cwe = desc["value"].replace("CWE-", "")
                     nvd_cwe_index.setdefault(cwe, []).append(vuln)
-
 print(f"📊 CVE NVD indexées (avec CWE) : {len(nvd_cwe_index)}")
 
 # ==========================================================
@@ -48,7 +46,6 @@ if os.path.isdir(bandit_file):
 
 with open(bandit_file, "r") as f:
     bandit_data = json.load(f)
-
 bandit_results = bandit_data.get("results", [])
 print(f"🔍 Vulnérabilités CODE détectées : {len(bandit_results)}")
 
@@ -74,7 +71,6 @@ for result in trivy_data.get("Results", []):
             "cvss": vuln.get("CVSS", {}),
             "description": vuln.get("Description") or vuln.get("Title", "")
         })
-
 print(f"📦 Vulnérabilités DÉPENDANCES détectées : {len(dependency_vulns)}")
 
 # ==========================================================
@@ -100,14 +96,34 @@ model_vulns = [
     for v in modelscan_data.get("vulnerabilities", [])
     if v.get("severity") != "UNKNOWN"
 ]
-
 print(f"🧪 Vulnérabilités MODELS détectées : {len(model_vulns)}")
+
+# ==========================================================
+# Charger ContainerScan (Trivy)
+# ==========================================================
+container_vulns = []
+if args.container_reports and os.path.isdir(args.container_reports):
+    for f in glob.glob(os.path.join(args.container_reports, "*.json")):
+        with open(f, "r") as jfile:
+            data = json.load(jfile)
+            for v in data.get("Results", []):
+                for vuln in v.get("Vulnerabilities", []) or []:
+                    container_vulns.append({
+                        "type": "container",
+                        "image": v.get("Target"),
+                        "vulnerability_id": vuln.get("VulnerabilityID"),
+                        "package": vuln.get("PkgName"),
+                        "version": vuln.get("InstalledVersion"),
+                        "severity": vuln.get("Severity"),
+                        "cvss": vuln.get("CVSS", {}),
+                        "description": vuln.get("Title")
+                    })
+print(f"🐳 Vulnérabilités CONTAINERS détectées : {len(container_vulns)}")
 
 # ==========================================================
 # Enrichissement CODE (Bandit + NVD)
 # ==========================================================
 code_vulns = []
-
 for v in bandit_results:
     cwe = str(v.get("issue_cwe", {}).get("id", "N/A"))
     enriched = {
@@ -143,67 +159,45 @@ final_report = {
     "summary": {
         "code_issues": len(code_vulns),
         "dependency_issues": len(dependency_vulns),
-        "model_issues": len(model_vulns)
+        "model_issues": len(model_vulns),
+        "container_issues": len(container_vulns)
     },
     "code": code_vulns,
     "dependencies": dependency_vulns,
-    "models": model_vulns
+    "models": model_vulns,
+    "containers": container_vulns
 }
 
 # ==========================================================
 # Affichage console
 # ==========================================================
-print("\n")
-print("\n")
 print("\n🔐 CODE VULNERABILITIES")
 print(tabulate(
-    [
-        [
-            v["file"],
-            v["line"],
-            v.get("mapped_cve", ""),
-            v.get("nvd_severity", ""),
-            v["issue"]
-        ]
-        for v in code_vulns
-    ],
+    [[v["file"], v["line"], v.get("mapped_cve",""), v.get("nvd_severity",""), v["issue"]] for v in code_vulns],
     headers=["File", "Line", "CVE", "Severity", "Issue"],
     tablefmt="github"
 ))
 
-print("\n")
-print("\n")
 print("\n📦 DEPENDENCY VULNERABILITIES")
 print(tabulate(
-    [
-        [
-            v["package"],
-            v["version"],
-            v["cve"],
-            v["severity"],
-            (v["description"] or "")[:120]
-        ]
-        for v in dependency_vulns
-    ],
+    [[v["package"], v["version"], v["cve"], v["severity"], (v["description"] or "")[:120]] for v in dependency_vulns],
     headers=["Package", "Version", "CVE", "Severity", "Description"],
     tablefmt="github"
 ))
 
 if model_vulns:
-    print("\n")
-    print("\n")
     print("\n🧪 MODEL VULNERABILITIES")
     print(tabulate(
-        [
-            [
-                v["file"],
-                v["description"],
-                v["severity"],
-                v["tool"]
-            ]
-            for v in model_vulns
-        ],
+        [[v["file"], v["description"], v["severity"], v["tool"]] for v in model_vulns],
         headers=["File", "Description", "Severity", "Tool"],
+        tablefmt="github"
+    ))
+
+if container_vulns:
+    print("\n🐳 CONTAINER VULNERABILITIES")
+    print(tabulate(
+        [[v["image"], v["package"], v["version"], v["vulnerability_id"], v["severity"], (v["description"] or "")[:120]] for v in container_vulns],
+        headers=["Image", "Package", "Version", "VulnID", "Severity", "Description"],
         tablefmt="github"
     ))
 
