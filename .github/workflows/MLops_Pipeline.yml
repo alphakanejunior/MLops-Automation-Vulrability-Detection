@@ -256,69 +256,68 @@ jobs:
 
           mkdir -p "$(dirname "$REPORT_TXT")"
 
-          # Lancer le scan sur tout le dossier des modèles
+          # Run ModelScan and save TXT
           modelscan scan -p model/model/ | tee "$REPORT_TXT"
 
-          # Convertir le TXT en JSON structuré
-          python - <<EOF
+          # Export variables pour Python
+          export REPORT_TXT
+          export REPORT_JSON
+
+          # Convert TXT -> JSON structuré avec severity
+          python - << EOF
           import json
           import re
           import os
 
-          txt_file = "${REPORT_TXT}"
-          json_file = "${REPORT_JSON}"
+          txt_file = os.environ["REPORT_TXT"]
+          json_file = os.environ["REPORT_JSON"]
 
           vulns = []
 
           with open(txt_file, "r") as f:
               lines = f.readlines()
 
-          # Parsing errors
+          current_severity = None
+          current_source = None
+
           for line in lines:
               line = line.strip()
               if not line:
                   continue
-              m = re.search(r'Parsing error.*opcode (.+)', line)
-              if m:
-                  vulns.append({
-                      "id": f"modelscan-parsing-error-{m.group(1)}",
-                      "cve": f"modelscan-parsing-error-{m.group(1)}",
-                      "file": "",
-                      "message": line
-                  })
 
-          # Unsafe operators et autres messages
-          current_severity = None
-          for i, line in enumerate(lines):
-              line = line.strip()
-              if "Unsafe operator found" in line:
-                  # Récupération de la description et de la source
-                  description = ""
-                  source = ""
-                  for j in range(i+1, len(lines)):
-                      l = lines[j].strip()
-                      if l.startswith("- Description:"):
-                          description = l.replace("- Description:", "").strip()
-                      if l.startswith("- Source:"):
-                          source = l.replace("- Source:", "").strip()
-                      if l.startswith("---"):
-                          break
-                  vulns.append({
-                      "id": f"modelscan-unsafe-{hash(description+source)}",
-                      "cve": f"modelscan-unsafe-{hash(description+source)}",
-                      "file": source,
-                      "message": description
-                  })
+              # Detect severity section
+              m_sev = re.match(r'- (LOW|MEDIUM|HIGH|CRITICAL):', line)
+              if m_sev:
+                  current_severity = m_sev.group(1)
+                  continue
 
-          # Créer dossier si nécessaire
-          os.makedirs(os.path.dirname(json_file), exist_ok=True)
+              # Detect source file
+              m_source = re.search(r'Source: (.+)', line)
+              if m_source:
+                  current_source = m_source.group(1)
+                  continue
+
+              # Detect unsafe operator or messages
+              if "Unsafe operator found" in line or "Parsing error" in line:
+                  vulns.append({
+                      "id": f"modelscan-{hash(line)}",
+                      "cve": f"modelscan-{hash(line)}",
+                      "file": current_source or "",
+                      "message": line,
+                      "severity": current_severity or "UNKNOWN"
+                  })
+                  current_severity = None
+                  current_source = None
 
           # Générer JSON final
-          with open(json_file, "w") as f:
-              json.dump({"vulnerabilities": vulns}, f, indent=2)
+          output = {"vulnerabilities": vulns}
 
-          print(f"✅ ModelScan JSON saved to {json_file}")
+          with open(json_file, "w") as f:
+              json.dump(output, f, indent=2)
+
+          print(f"✅ ModelScan JSON with severity saved to {json_file}")
           EOF
+
 
       # ---------------------------------------------------------
       # Étape 5 : Upload du rapport JSON
