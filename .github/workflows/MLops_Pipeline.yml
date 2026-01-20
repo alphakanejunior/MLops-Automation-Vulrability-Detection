@@ -245,13 +245,15 @@ jobs:
         run: |
           REPORT_DIR="reports/modelscan/${{ env.TIMESTAMP }}"
           mkdir -p "$REPORT_DIR"
-          JSON_OUTPUT="$REPORT_DIR/modelscan-report.json"
 
-          python - << 'EOF'
+              python - << 'EOF'
           import os
           import glob
           import json
           import subprocess
+
+          # Chemin complet pour le rapport JSON final
+          JSON_OUTPUT = os.path.join("reports", "modelscan", os.environ["TIMESTAMP"], "modelscan-report.json")
 
           model_dir = "model/model"
           report = []
@@ -285,6 +287,7 @@ jobs:
 
           print(f"\n✅ ModelScan JSON report generated at {JSON_OUTPUT}")
           EOF
+
 
       # ---------------------------------------------------------
       # Étape 4 : Affichage résumé simple dans la console
