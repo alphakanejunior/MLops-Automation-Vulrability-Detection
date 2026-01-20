@@ -401,6 +401,10 @@ jobs:
               OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
               trivy image --format json --ignore-unfixed --vuln-type os,library \
                 --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image" || echo "⚠️ Scan failed for $image"
+
+              # ✅ Affichage console des vulnérabilités trouvées
+              echo "📋 Vulnérabilités trouvées pour l'image $image :"
+              jq -r '.Results[].Vulnerabilities[] | "\(.VulnerabilityID) [\(.Severity)] -> \(.PkgName) @ \(.InstalledVersion)"' "$OUTPUT_FILE" || echo "Aucune vulnérabilité détectée"
             done < images.txt
           fi
 
