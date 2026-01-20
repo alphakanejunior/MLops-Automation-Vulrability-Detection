@@ -217,106 +217,94 @@ jobs:
   # Job 4 : ModelScan
   # Objectif : Scanner tous les fichiers modèles ML et générer un JSON
   # =============================================================
+  # =============================================================
+  # Job 3 : ModelScan officiel (corrigé et fonctionnel)
+  # =============================================================
   ModelScan:
-    name: ML Model Security Scan (ModelScan)
+    name: Model Serialization Security Scan
     runs-on: ubuntu-latest
-    needs: [CodeScan, DependencyScan]
-
+    needs: DependencyScan
     steps:
-      # ---------------------------------------------------------
-      # Étape 1 : Récupération du dépôt
-      # ---------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------------------------------------------------------
-      # Étape 2 : Installation de ModelScan
-      # ---------------------------------------------------------
       - name: Install ModelScan
         run: |
           python -m pip install --upgrade pip
-          pip install modelscan
-          modelscan --version
+          pip install modelscan==0.8.7
 
-      # ---------------------------------------------------------
-      # Étape 3 : Scan de tous les modèles et génération JSON
-      # ---------------------------------------------------------
-      - name: Scan all ML models and generate JSON report
+      - name: Create Reports Folder
+        run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
+
+      - name: Run ModelScan and generate JSON compatible CVEEnrichment
         run: |
-          REPORT_DIR="reports/modelscan/${{ env.TIMESTAMP }}"
-          mkdir -p "$REPORT_DIR"
+          REPORT_TXT="reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt"
+          REPORT_JSON="reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json"
 
-              python - << 'EOF'
+          mkdir -p "$(dirname "$REPORT_TXT")"
+
+          # Run ModelScan and save TXT
+          modelscan scan -p model/model/ | tee "$REPORT_TXT"
+
+          # Convert TXT -> JSON structuré
+          python - <<EOF
+          import json
+          import re
           import os
-          import glob
-          import json
-          import subprocess
 
-          # Chemin complet pour le rapport JSON final
-          JSON_OUTPUT = os.path.join("reports", "modelscan", os.environ["TIMESTAMP"], "modelscan-report.json")
+          txt_file = os.environ.get("REPORT_TXT")
+          json_file = os.environ.get("REPORT_JSON")
 
-          model_dir = "model/model"
-          report = []
+          vulns = []
 
-          # Parcours de tous les fichiers dans le dossier des modèles
-          for model_file in glob.glob(f"{model_dir}/**/*", recursive=True):
-              if os.path.isfile(model_file):
-                  print(f"⬇️ Scanning {model_file} ...")
-                  try:
-                      result = subprocess.run(
-                          ["modelscan", "scan", "-p", model_file],
-                          capture_output=True,
-                          text=True
-                      )
-                      # Chaque entrée JSON contiendra : file, raw_output
-                      report.append({
-                          "file": model_file,
-                          "output": result.stdout.strip()
-                      })
-                  except Exception as e:
-                      report.append({
-                          "file": model_file,
-                          "output": "",
-                          "error": str(e)
-                      })
+          with open(txt_file, "r") as f:
+              lines = f.readlines()
 
-          # Écriture du JSON final pour tous les modèles
-          os.makedirs(os.path.dirname(JSON_OUTPUT), exist_ok=True)
-          with open(JSON_OUTPUT, "w") as f:
-              json.dump(report, f, indent=2)
+          # Parsing errors
+          for line in lines:
+              line = line.strip()
+              if not line:
+                  continue
+              m = re.search(r'Parsing error.*opcode (.+)', line)
+              if m:
+                  vulns.append({
+                      "id": f"modelscan-parsing-error-{m.group(1)}",
+                      "cve": f"modelscan-parsing-error-{m.group(1)}",
+                      "file": "",
+                      "message": line
+                  })
 
-          print(f"\n✅ ModelScan JSON report generated at {JSON_OUTPUT}")
+          # Messages génériques si aucun problème détecté
+          if any("No issues found" in l for l in lines):
+              pass
+          elif not vulns:
+              for l in lines:
+                  if "--- Summary ---" in l or "Scanning" in l:
+                      continue
+                  vulns.append({
+                      "id": f"modelscan-message-{hash(l)}",
+                      "cve": f"modelscan-message-{hash(l)}",
+                      "file": "",
+                      "message": l
+                  })
+
+          # Générer JSON final
+          output = {"vulnerabilities": vulns}
+
+          os.makedirs(os.path.dirname(json_file), exist_ok=True)
+          with open(json_file, "w") as f:
+              json.dump(output, f, indent=2)
+
+          print(f"✅ ModelScan JSON saved to {json_file}")
           EOF
 
-
-      # ---------------------------------------------------------
-      # Étape 4 : Affichage résumé simple dans la console
-      # ---------------------------------------------------------
-      - name: Display ModelScan summary
-        run: |
-          python - << 'EOF'
-          import json
-
-          report_file = "reports/modelscan/${{ env.TIMESTAMP }}/modelscan-report.json"
-          with open(report_file) as f:
-              data = json.load(f)
-
-          print("\n📊 ML MODEL SCAN SUMMARY")
-          for entry in data:
-              file = entry.get("file")
-              output = entry.get("output", "")
-              print(f"{file} => {len(output.splitlines())} lines of scan output")
-          EOF
-
-      # ---------------------------------------------------------
-      # Étape 5 : Archivage du rapport JSON
-      # ---------------------------------------------------------
-      - name: Upload ModelScan report
+      - name: Upload ModelScan Report
         uses: actions/upload-artifact@v4
         with:
           name: modelscan-report-${{ env.TIMESTAMP }}
-          path: reports/modelscan/${{ env.TIMESTAMP }}/modelscan-report.json
+          path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
           retention-days: 30
+
 
 
   # =============================================================
