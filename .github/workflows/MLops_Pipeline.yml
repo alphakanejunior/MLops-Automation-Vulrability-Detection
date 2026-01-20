@@ -209,7 +209,7 @@ jobs:
       - name: Upload Dependency Scan Report
         uses: actions/upload-artifact@v4
         with:
-          name: dependency-report-${{ env.TIMESTAMP }}
+          name: trivy-dependency-report-${{ env.TIMESTAMP }}
           path: reports/dependency/${{ env.TIMESTAMP }}/trivy-dependency-report.json
           retention-days: 30
 
