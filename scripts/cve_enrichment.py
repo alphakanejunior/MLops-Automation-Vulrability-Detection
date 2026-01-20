@@ -9,11 +9,12 @@ from tabulate import tabulate
 # Arguments
 # ==========================================================
 parser = argparse.ArgumentParser(
-    description="CVE Enrichment for Code (Bandit) and Dependencies (Trivy)"
+    description="CVE Enrichment for Code (Bandit), Dependencies (Trivy) and Models (ModelScan)"
 )
 parser.add_argument("--nvd-db", required=True, help="Folder containing NVD 2.0 JSON files")
 parser.add_argument("--bandit-report", required=True, help="Bandit report folder or file")
 parser.add_argument("--trivy-report", required=True, help="Trivy report folder or file")
+parser.add_argument("--modelscan-report", required=True, help="ModelScan report folder or file")
 parser.add_argument("--output", required=True, help="Output enriched JSON file")
 args = parser.parse_args()
 
@@ -30,7 +31,6 @@ for nvd_file in glob.glob(os.path.join(args.nvd_db, "*.json")):
     for vuln in data.get("vulnerabilities", []):
         cve = vuln.get("cve", {})
         weaknesses = cve.get("weaknesses", [])
-
         for w in weaknesses:
             for desc in w.get("description", []):
                 if desc.get("value", "").startswith("CWE-"):
@@ -78,13 +78,38 @@ for result in trivy_data.get("Results", []):
 print(f"📦 Vulnérabilités DÉPENDANCES détectées : {len(dependency_vulns)}")
 
 # ==========================================================
+# Charger ModelScan (MODELS)
+# ==========================================================
+modelscan_file = args.modelscan_report
+if os.path.isdir(modelscan_file):
+    modelscan_file = glob.glob(os.path.join(modelscan_file, "*.json"))[0]
+
+with open(modelscan_file, "r") as f:
+    modelscan_data = json.load(f)
+
+model_vulns = [
+    {
+        "type": "model",
+        "file": v.get("file"),
+        "description": v.get("description"),
+        "severity": v.get("severity"),
+        "tool": v.get("tool", "ModelScan"),
+        "cve": v.get("cve"),
+        "id": v.get("id")
+    }
+    for v in modelscan_data.get("vulnerabilities", [])
+    if v.get("severity") != "UNKNOWN"
+]
+
+print(f"🧪 Vulnérabilités MODELS détectées : {len(model_vulns)}")
+
+# ==========================================================
 # Enrichissement CODE (Bandit + NVD)
 # ==========================================================
 code_vulns = []
 
 for v in bandit_results:
     cwe = str(v.get("issue_cwe", {}).get("id", "N/A"))
-
     enriched = {
         "type": "code",
         "file": v.get("filename"),
@@ -109,7 +134,6 @@ for v in bandit_results:
                 "nvd_severity": cvss.get("baseSeverity"),
                 "source": "Bandit+NVD"
             })
-
     code_vulns.append(enriched)
 
 # ==========================================================
@@ -118,10 +142,12 @@ for v in bandit_results:
 final_report = {
     "summary": {
         "code_issues": len(code_vulns),
-        "dependency_issues": len(dependency_vulns)
+        "dependency_issues": len(dependency_vulns),
+        "model_issues": len(model_vulns)
     },
     "code": code_vulns,
-    "dependencies": dependency_vulns
+    "dependencies": dependency_vulns,
+    "models": model_vulns
 }
 
 # ==========================================================
@@ -156,9 +182,24 @@ print(tabulate(
         for v in dependency_vulns
     ],
     headers=["Package", "Version", "CVE", "Severity", "Description"],
-    tablefmt="github",
-    maxcolwidths=[None, None, None, None, 120]
+    tablefmt="github"
 ))
+
+if model_vulns:
+    print("\n🧪 MODEL VULNERABILITIES")
+    print(tabulate(
+        [
+            [
+                v["file"],
+                v["description"],
+                v["severity"],
+                v["tool"]
+            ]
+            for v in model_vulns
+        ],
+        headers=["File", "Description", "Severity", "Tool"],
+        tablefmt="github"
+    ))
 
 # ==========================================================
 # Export JSON
