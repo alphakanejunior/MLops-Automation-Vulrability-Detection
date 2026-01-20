@@ -8,7 +8,9 @@ from tabulate import tabulate
 # ==========================================================
 # Arguments
 # ==========================================================
-parser = argparse.ArgumentParser(description="CVE Enrichment for Code (Bandit) and Dependencies (Trivy)")
+parser = argparse.ArgumentParser(
+    description="CVE Enrichment for Code (Bandit) and Dependencies (Trivy)"
+)
 parser.add_argument("--nvd-db", required=True, help="Folder containing NVD 2.0 JSON files")
 parser.add_argument("--bandit-report", required=True, help="Bandit report folder or file")
 parser.add_argument("--trivy-report", required=True, help="Trivy report folder or file")
@@ -27,7 +29,6 @@ for nvd_file in glob.glob(os.path.join(args.nvd_db, "*.json")):
 
     for vuln in data.get("vulnerabilities", []):
         cve = vuln.get("cve", {})
-        cve_id = cve.get("id")
         weaknesses = cve.get("weaknesses", [])
 
         for w in weaknesses:
@@ -71,7 +72,7 @@ for result in trivy_data.get("Results", []):
             "cve": vuln.get("VulnerabilityID"),
             "severity": vuln.get("Severity"),
             "cvss": vuln.get("CVSS", {}),
-            "description": vuln.get("Title")
+            "description": vuln.get("Description") or vuln.get("Title", "")
         })
 
 print(f"📦 Vulnérabilités DÉPENDANCES détectées : {len(dependency_vulns)}")
@@ -112,7 +113,7 @@ for v in bandit_results:
     code_vulns.append(enriched)
 
 # ==========================================================
-# Résultat FINAL
+# Résultat FINAL (JSON)
 # ==========================================================
 final_report = {
     "summary": {
@@ -128,16 +129,35 @@ final_report = {
 # ==========================================================
 print("\n🔐 CODE VULNERABILITIES")
 print(tabulate(
-    [[v["file"], v["line"], v.get("mapped_cve", ""), v.get("nvd_severity", ""), v["issue"]] for v in code_vulns],
+    [
+        [
+            v["file"],
+            v["line"],
+            v.get("mapped_cve", ""),
+            v.get("nvd_severity", ""),
+            v["issue"]
+        ]
+        for v in code_vulns
+    ],
     headers=["File", "Line", "CVE", "Severity", "Issue"],
     tablefmt="github"
 ))
 
 print("\n📦 DEPENDENCY VULNERABILITIES")
 print(tabulate(
-    [[v["package"], v["version"], v["cve"], v["severity"]] for v in dependency_vulns],
-    headers=["Package", "Version", "CVE", "Severity"],
-    tablefmt="github"
+    [
+        [
+            v["package"],
+            v["version"],
+            v["cve"],
+            v["severity"],
+            (v["description"] or "")[:120]
+        ]
+        for v in dependency_vulns
+    ],
+    headers=["Package", "Version", "CVE", "Severity", "Description"],
+    tablefmt="github",
+    maxcolwidths=[None, None, None, None, 120]
 ))
 
 # ==========================================================
