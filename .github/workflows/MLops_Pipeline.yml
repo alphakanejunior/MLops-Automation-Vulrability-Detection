@@ -254,7 +254,7 @@ jobs:
         run: |
           REPORT_DIR="reports/modelscan/${{ env.TIMESTAMP }}"
           OUTPUT_FILE="$REPORT_DIR/modelscan-report.json"
-          MODEL_FILES=$(find models/model -type f)
+          MODEL_FILES=$(find model/model -type f)
 
           echo "[]" > "$OUTPUT_FILE"  # fichier JSON vide initial
           for model_file in $MODEL_FILES; do
