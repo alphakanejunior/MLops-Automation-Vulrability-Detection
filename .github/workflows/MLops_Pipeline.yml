@@ -274,18 +274,18 @@ jobs:
 
           vulns = []
 
-          with open(txt_file, "r") as f:
-              lines = f.readlines()
-
           current_severity = None
           current_source = None
+
+          with open(txt_file, "r") as f:
+              lines = f.readlines()
 
           for line in lines:
               line = line.strip()
               if not line:
                   continue
 
-              # Detect severity section
+              # Detect severity section (CRITICAL/HIGH/MEDIUM/LOW)
               m_sev = re.match(r'- (LOW|MEDIUM|HIGH|CRITICAL):', line)
               if m_sev:
                   current_severity = m_sev.group(1)
@@ -297,7 +297,7 @@ jobs:
                   current_source = m_source.group(1)
                   continue
 
-              # Detect unsafe operator or messages
+              # Detect unsafe operator or parsing error
               if "Unsafe operator found" in line or "Parsing error" in line:
                   vulns.append({
                       "id": f"modelscan-{hash(line)}",
@@ -306,8 +306,8 @@ jobs:
                       "message": line,
                       "severity": current_severity or "UNKNOWN"
                   })
-                  current_severity = None
-                  current_source = None
+                  current_severity = current_severity  # conserve la dernière severity
+                  current_source = None  # reset source si on l'a utilisé
 
           # Générer JSON final
           output = {"vulnerabilities": vulns}
@@ -316,7 +316,6 @@ jobs:
               json.dump(output, f, indent=2)
 
           print(f"✅ ModelScan JSON with severity saved to {json_file}")
-          EOF
 
 
       # ---------------------------------------------------------
