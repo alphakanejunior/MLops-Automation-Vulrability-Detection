@@ -2,128 +2,174 @@
 import os
 import glob
 import json
-from tabulate import tabulate
 import argparse
+from tabulate import tabulate
 
-# ==========================
+# ==========================================================
 # Arguments
-# ==========================
-parser = argparse.ArgumentParser(description="Enrich Bandit scan results with NVD CVEs")
+# ==========================================================
+parser = argparse.ArgumentParser(
+    description="Security Enrichment: Code (Bandit) + Dependencies (Trivy) with NVD"
+)
 parser.add_argument("--nvd-db", required=True, help="Folder containing NVD JSON files")
 parser.add_argument("--bandit-report", required=True, help="Folder containing Bandit JSON report")
-parser.add_argument("--output", required=True, help="Output JSON file for enriched CVEs")
+parser.add_argument("--trivy-report", required=True, help="Trivy dependency JSON report")
+parser.add_argument("--output", required=True, help="Final enriched JSON report")
 args = parser.parse_args()
 
-# ==========================
-# Charger NVD
-# ==========================
-print("🔄 Chargement NVD 2.0…")
-nvd_db = {}
+# ==========================================================
+# Load NVD (for CODE CWE → CVE mapping)
+# ==========================================================
+print("🔄 Chargement NVD 2.0 (CWE mapping)…")
+nvd_cwe_index = []
+
 for nvd_file in glob.glob(os.path.join(args.nvd_db, "*.json")):
-    with open(nvd_file) as f:
+    with open(nvd_file, "r") as f:
         data = json.load(f)
         for item in data.get("CVE_Items", []):
-            cve_id = item["cve"]["CVE_data_meta"]["ID"]
-            # Extraire les CWE pour chaque CVE
             cwes = []
             for pt in item.get("cve", {}).get("problemtype", {}).get("problemtype_data", []):
                 for desc in pt.get("description", []):
                     if desc.get("value", "").startswith("CWE-"):
                         cwes.append(desc["value"].replace("CWE-", ""))
-            nvd_db[cve_id] = {
-                "item": item,
-                "cwes": cwes
-            }
-print(f"📊 CVE NVD chargées : {len(nvd_db)}")
 
-# ==========================
-# Charger Bandit
-# ==========================
-bandit_json_file = glob.glob(os.path.join(args.bandit_report, "*.json"))[0]
-with open(bandit_json_file) as f:
+            if cwes:
+                nvd_cwe_index.append({
+                    "cwes": cwes,
+                    "item": item
+                })
+
+print(f"📊 CVE NVD indexées (avec CWE) : {len(nvd_cwe_index)}")
+
+# ==========================================================
+# Load Bandit report (CODE)
+# ==========================================================
+bandit_file = glob.glob(os.path.join(args.bandit_report, "*.json"))[0]
+with open(bandit_file, "r") as f:
     bandit_data = json.load(f)
 
 bandit_results = bandit_data.get("results", [])
-print(f"🔍 Vulnérabilités détectées par Bandit : {len(bandit_results)}")
+print(f"🔍 Vulnérabilités CODE détectées : {len(bandit_results)}")
 
-# ==========================
-# Enrichissement
-# ==========================
-enriched = {}
+# ==========================================================
+# Enrich CODE vulnerabilities
+# ==========================================================
+code_vulns = []
 
 for v in bandit_results:
     cwe_id = str(v.get("issue_cwe", {}).get("id", "N/A"))
-
-    enriched[cwe_id] = {
-        "description": "",
-        "cvss_score": "",
-        "cvss_vector": "",
-        "severity": "",
-        "exploitability": "",
-        "patch": "",
-        "source": "ReportOnly",
+    enriched = {
+        "type": "code",
+        "cwe": f"CWE-{cwe_id}",
         "file": v.get("filename"),
         "line": v.get("line_number"),
-        "issue_text": v.get("issue_text"),
-        "test_id": v.get("test_id"),
-        "test_name": v.get("test_name"),
-        "more_info": v.get("more_info")
+        "issue": v.get("issue_text"),
+        "severity": "",
+        "cvss_score": "",
+        "cvss_vector": "",
+        "exploitability": "",
+        "source": "Bandit"
     }
 
-    # Mapper avec NVD
-    for cve_id, nvd_entry in nvd_db.items():
-        if cwe_id in nvd_entry["cwes"]:
-            item = nvd_entry["item"]
-            # Récupérer description
-            desc = item.get("cve", {}).get("description", {}).get("description_data", [])
-            description = desc[0]["value"] if desc else ""
-            # Récupérer CVSSv3
+    # CWE → CVE → NVD
+    for entry in nvd_cwe_index:
+        if cwe_id in entry["cwes"]:
+            item = entry["item"]
             cvss = item.get("impact", {}).get("baseMetricV3", {}).get("cvssV3", {})
-            severity = cvss.get("baseSeverity", "")
-            baseScore = cvss.get("baseScore", "")
-            vector = cvss.get("vectorString", "")
-            exploitability = item.get("impact", {}).get("baseMetricV3", {}).get("exploitabilityScore", "")
-
-            enriched[cwe_id].update({
-                "description": description,
-                "cvss_score": baseScore,
-                "cvss_vector": vector,
-                "severity": severity,
-                "exploitability": exploitability,
+            enriched.update({
+                "severity": cvss.get("baseSeverity", ""),
+                "cvss_score": cvss.get("baseScore", ""),
+                "cvss_vector": cvss.get("vectorString", ""),
+                "exploitability": item.get("impact", {})
+                                   .get("baseMetricV3", {})
+                                   .get("exploitabilityScore", ""),
                 "source": "NVD"
             })
-            break  # on prend le premier CVE trouvé
+            break
 
-# ==========================
-# Affichage console
-# ==========================
-table = []
-for cwe, info in enriched.items():
-    table.append([
-        cwe,
-        info["file"],
-        info["line"],
-        info["severity"],
-        info["cvss_score"],
-        info["exploitability"],
-        info["issue_text"],
-        info["test_id"],
-        info["test_name"],
-        info["more_info"]
-    ])
+    code_vulns.append(enriched)
 
-print("\n🔍 Bandit Scan Enrichi avec NVD :")
-print(tabulate(
-    table,
-    headers=["CWE", "File", "Line", "Severity", "CVSSv3", "Exploitability", "Issue", "Test ID", "Test Name", "More Info"],
-    tablefmt="github"
-))
+# ==========================================================
+# Load Trivy report (DEPENDENCIES)
+# ==========================================================
+with open(args.trivy_report, "r") as f:
+    trivy_data = json.load(f)
 
-# ==========================
-# Export JSON final
-# ==========================
+dependency_vulns = []
+
+for result in trivy_data.get("Results", []):
+    target = result.get("Target", "")
+    for vuln in result.get("Vulnerabilities", []) or []:
+        cvss = vuln.get("CVSS", {}).get("nvd", {})
+        dependency_vulns.append({
+            "type": "dependency",
+            "target": target,
+            "package": vuln.get("PkgName"),
+            "installed_version": vuln.get("InstalledVersion"),
+            "fixed_version": vuln.get("FixedVersion"),
+            "cve": vuln.get("VulnerabilityID"),
+            "severity": vuln.get("Severity"),
+            "cvss_score": cvss.get("V3Score") or cvss.get("V2Score"),
+            "description": vuln.get("Title"),
+            "reference": vuln.get("PrimaryURL"),
+            "source": "NVD"
+        })
+
+print(f"📦 Vulnérabilités DÉPENDANCES détectées : {len(dependency_vulns)}")
+
+# ==========================================================
+# Console display
+# ==========================================================
+if code_vulns:
+    print("\n🧠 Code Vulnerabilities (Bandit + NVD):")
+    print(tabulate(
+        [
+            [
+                v["cwe"],
+                v["file"],
+                v["line"],
+                v["severity"],
+                v["cvss_score"],
+                v["issue"]
+            ]
+            for v in code_vulns
+        ],
+        headers=["CWE", "File", "Line", "Severity", "CVSS", "Issue"],
+        tablefmt="github"
+    ))
+
+if dependency_vulns:
+    print("\n📦 Dependency Vulnerabilities (Trivy + NVD):")
+    print(tabulate(
+        [
+            [
+                v["target"],
+                v["package"],
+                v["installed_version"],
+                v["cve"],
+                v["severity"],
+                v["cvss_score"]
+            ]
+            for v in dependency_vulns
+        ],
+        headers=["Target", "Package", "Version", "CVE", "Severity", "CVSS"],
+        tablefmt="github"
+    ))
+
+# ==========================================================
+# Export unified JSON
+# ==========================================================
+final_report = {
+    "summary": {
+        "code_vulnerabilities": len(code_vulns),
+        "dependency_vulnerabilities": len(dependency_vulns)
+    },
+    "code": code_vulns,
+    "dependencies": dependency_vulns
+}
+
 os.makedirs(os.path.dirname(args.output), exist_ok=True)
 with open(args.output, "w") as f:
-    json.dump(enriched, f, indent=2)
+    json.dump(final_report, f, indent=2)
 
-print(f"\n✅ Rapport enrichi sauvegardé : {args.output}")
+print(f"\n✅ Rapport sécurité unifié sauvegardé : {args.output}")
