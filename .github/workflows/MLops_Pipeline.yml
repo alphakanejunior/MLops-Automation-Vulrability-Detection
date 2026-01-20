@@ -278,7 +278,7 @@ jobs:
       - name: Télécharger le rapport Trivy
         uses: actions/download-artifact@v4
         with:
-          name: dependency-report-${{ env.TIMESTAMP }}
+          name: trivy-dependency-report-${{ env.TIMESTAMP }}
           path: reports/dependency/${{ env.TIMESTAMP }}
 
       # ---------------------------------------------------------
