@@ -153,6 +153,8 @@ final_report = {
 # ==========================================================
 # Affichage console
 # ==========================================================
+print("\n")
+print("\n")
 print("\n🔐 CODE VULNERABILITIES")
 print(tabulate(
     [
@@ -169,6 +171,8 @@ print(tabulate(
     tablefmt="github"
 ))
 
+print("\n")
+print("\n")
 print("\n📦 DEPENDENCY VULNERABILITIES")
 print(tabulate(
     [
@@ -186,6 +190,8 @@ print(tabulate(
 ))
 
 if model_vulns:
+    print("\n")
+    print("\n")
     print("\n🧪 MODEL VULNERABILITIES")
     print(tabulate(
         [
