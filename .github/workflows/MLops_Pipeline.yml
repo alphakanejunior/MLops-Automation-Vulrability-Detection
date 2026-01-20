@@ -214,6 +214,103 @@ jobs:
           retention-days: 30
 
   # =============================================================
+  # Job 4 : ModelScan
+  # Objectif : Analyser les modèles ML pour vulnérabilités
+  # Outil    : modelscan (ex: Python CLI)
+  # =============================================================
+  ModelScan:
+    name: Model Security Scan
+    runs-on: ubuntu-latest
+    needs:
+      - CodeScan
+      - DependencyScan
+
+    steps:
+      # ---------------------------------------------------------
+      # Étape 1 : Récupération du dépôt
+      # ---------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------
+      # Étape 2 : Configurer Python
+      # ---------------------------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ---------------------------------------------------------
+      # Étape 3 : Installer ModelScan (Python)
+      # ---------------------------------------------------------
+      - name: Install ModelScan
+        run: |
+          python -m pip install --upgrade pip
+          pip install modelscan tabulate
+
+      # ---------------------------------------------------------
+      # Étape 4 : Créer dossier de rapports
+      # ---------------------------------------------------------
+      - name: Prepare output directory
+        run: |
+          REPORT_DIR="reports/modelscan/${{ env.TIMESTAMP }}"
+          mkdir -p "$REPORT_DIR"
+
+      # ---------------------------------------------------------
+      # Étape 5 : Exécution du scan modèle
+      # ---------------------------------------------------------
+      - name: Run ModelScan
+        run: |
+          REPORT_DIR="reports/modelscan/${{ env.TIMESTAMP }}"
+          MODEL_PATH="models/my_model.pkl"  # <-- Mettre le chemin de ton modèle
+          modelscan scan "$MODEL_PATH" --output "$REPORT_DIR/modelscan-report.json" || true
+          echo "✅ ModelScan finished"
+
+      # ---------------------------------------------------------
+      # Étape 6 : Affichage des résultats ModelScan
+      # ---------------------------------------------------------
+      - name: Display ModelScan Results
+        run: |
+          python - << 'EOF'
+          import json
+          from tabulate import tabulate
+
+          report_file = "reports/modelscan/${{ env.TIMESTAMP }}/modelscan-report.json"
+          with open(report_file) as f:
+              data = json.load(f)
+
+          issues = data.get("issues", [])
+          if not issues:
+              print("✅ No issues found in model")
+          else:
+              table = []
+              for i in issues:
+                  table.append([
+                      i.get("name"),
+                      i.get("type"),
+                      i.get("severity"),
+                      i.get("description")[:120]
+                  ])
+              print("\n🔬 ModelScan Results:")
+              print(tabulate(
+                  table,
+                  headers=["Name", "Type", "Severity", "Description"],
+                  tablefmt="github"
+              ))
+          EOF
+
+      # ---------------------------------------------------------
+      # Étape 7 : Upload du rapport JSON
+      # ---------------------------------------------------------
+      - name: Upload ModelScan Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: modelscan-report-${{ env.TIMESTAMP }}
+          path: reports/modelscan/${{ env.TIMESTAMP }}/modelscan-report.json
+          retention-days: 30
+
+
+  # =============================================================
   # Job 3 : CVEEnrichment
   # Objectif : Enrichir les vulnérabilités du code avec la base NVD
   # Source   : Rapport Bandit + Base NVD (JSON)
