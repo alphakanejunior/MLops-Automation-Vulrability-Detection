@@ -258,7 +258,7 @@ jobs:
 
           echo "[]" > "$OUTPUT_FILE"  # fichier JSON vide initial
 
-          MODEL_FILES=$(find models/model -type f)
+          MODEL_FILES=$(find model/model -type f)
           for model_file in $MODEL_FILES; do
             echo "⬇️ Scanning $model_file ..."
 
