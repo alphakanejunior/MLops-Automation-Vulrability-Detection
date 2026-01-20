@@ -303,5 +303,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: enriched-code-cve-report-${{ env.TIMESTAMP }}
-          path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_code_cves.json
+          path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json
           retention-days: 30
