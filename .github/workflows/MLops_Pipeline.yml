@@ -516,7 +516,7 @@ jobs:
             --bandit-report "reports/bandit/${{ env.TIMESTAMP }}" \
             --trivy-report "reports/dependency/${{ env.TIMESTAMP }}" \
             --modelscan-report "reports/modelscan/${{ env.TIMESTAMP }}/official" \
-            --container-report "reports/container/${{ env.TIMESTAMP }}" \
+            --container-reports "reports/container/${{ env.TIMESTAMP }}" \
             --output "$OUTPUT_DIR/enriched_cves.json"
 
       # ---------------------------------------------------------
