@@ -99,16 +99,13 @@ model_vulns = [
 print(f"🧪 Vulnérabilités MODELS détectées : {len(model_vulns)}")
 
 # ==========================================================
-# Charger ContainerScan (Trivy)
+# Charger ContainerScan (Trivy) avec parcours récursif
 # ==========================================================
 container_vulns = []
 
-if args.container_reports:
-    container_files = []
-    if os.path.isdir(args.container_reports):
-        container_files = glob.glob(os.path.join(args.container_reports, "*.json"))
-    elif os.path.isfile(args.container_reports):
-        container_files = [args.container_reports]
+if args.container_reports and os.path.exists(args.container_reports):
+    # Récupération récursive de tous les fichiers JSON dans le dossier
+    container_files = glob.glob(os.path.join(args.container_reports, "**/*.json"), recursive=True)
 
     for f in container_files:
         with open(f, "r") as jfile:
@@ -117,13 +114,14 @@ if args.container_reports:
                 for vuln in v.get("Vulnerabilities", []) or []:
                     container_vulns.append({
                         "type": "container",
-                        "image": v.get("Target"),
+                        "target": v.get("Target"),   # dockerfile ou image
                         "vulnerability_id": vuln.get("VulnerabilityID"),
                         "package": vuln.get("PkgName"),
                         "version": vuln.get("InstalledVersion"),
                         "severity": vuln.get("Severity"),
                         "cvss": vuln.get("CVSS", {}),
-                        "description": vuln.get("Title")
+                        "description": vuln.get("Title"),
+                        "tool": "Trivy"
                     })
 
 print(f"🐳 Vulnérabilités CONTAINERS détectées : {len(container_vulns)}")
