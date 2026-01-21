@@ -427,7 +427,7 @@ jobs:
             OUTPUT_FILE="reports/container/${{ env.TIMESTAMP }}/dockerfiles/scan-${SAFE_NAME}.json"
             trivy config --format json -o "$OUTPUT_FILE" "$df" || echo "⚠️ Scan failed for $df"
 
-            python - << EOF
+          python - << EOF
           import json
           from tabulate import tabulate
 
