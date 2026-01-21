@@ -375,13 +375,13 @@ jobs:
   # Objectif :
   # - Scanner les Dockerfiles
   # - Scanner les images Docker locales
+  # - Affichage lisible en tableau Markdown
   # Outil :
   # - Trivy
   # =============================================================
   ContainerScan:
     name: ContainerScan (Trivy)
     runs-on: ubuntu-latest
-    # Dépend du scan des modèles
     needs: ModelScan
 
     steps:
@@ -416,16 +416,41 @@ jobs:
         run: trivy image --download-db-only
 
       # ---------------------------------------------------------
-      # Étape 5 : Scan des Dockerfiles (Infrastructure as Code)
+      # Étape 5 : Scan Dockerfiles (Infrastructure as Code)
       # ---------------------------------------------------------
       - name: Scan Dockerfiles
         run: |
-          REPORT_DIR="reports/container/${{ env.TIMESTAMP }}/dockerfiles"
-          mkdir -p "$REPORT_DIR"
+          mkdir -p "reports/container/${{ env.TIMESTAMP }}/dockerfiles"
+          pip install tabulate
           find . -name 'Dockerfile*' | while read df; do
             SAFE_NAME=$(echo "$df" | tr '/:' '_')
-            trivy config --format json -o "${REPORT_DIR}/scan-${SAFE_NAME}.json" "$df" || echo "⚠️ Scan failed for $df"
-          done
+            OUTPUT_FILE="reports/container/${{ env.TIMESTAMP }}/dockerfiles/scan-${SAFE_NAME}.json"
+            trivy config --format json -o "$OUTPUT_FILE" "$df" || echo "⚠️ Scan failed for $df"
+
+            python - << EOF
+          import json
+          from tabulate import tabulate
+
+          with open("$OUTPUT_FILE") as f:
+              data = json.load(f)
+
+          rows = []
+          for result in data.get("Results", []):
+              for vuln in result.get("Vulnerabilities", []) or []:
+                  rows.append([
+                      vuln.get("VulnerabilityID"),
+                      vuln.get("Severity"),
+                      vuln.get("PkgName"),
+                      vuln.get("InstalledVersion")
+                  ])
+
+          if not rows:
+              print("✅ No vulnerabilities found in $df")
+          else:
+              print(f"\n📋 Vulnerabilities for Dockerfile: {df}")
+              print(tabulate(rows, headers=["CVE", "Severity", "Package", "Version"], tablefmt="github"))
+          EOF
+                    done
 
       # ---------------------------------------------------------
       # Étape 6 : Scan des images Docker locales
@@ -434,24 +459,44 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export REPORT_DIR="reports/container/${{ env.TIMESTAMP }}/local-images"
-          mkdir -p "$REPORT_DIR"
+          mkdir -p "reports/container/${{ env.TIMESTAMP }}/local-images"
           docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" > images.txt || true
 
           if [ ! -s images.txt ]; then
             echo "⚠️ No Docker images found, skipping local image scan."
           else
+            pip install tabulate
             while read -r image; do
               SAFE_NAME=$(echo "$image" | tr '/:' '_')
-              OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
+              OUTPUT_FILE="reports/container/${{ env.TIMESTAMP }}/local-images/scan-${SAFE_NAME}.json"
               trivy image --format json --ignore-unfixed --vuln-type os,library \
                 --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image" || echo "⚠️ Scan failed for $image"
 
-              # Affichage console des vulnérabilités trouvées
-              echo "📋 Vulnérabilités trouvées pour l'image $image :"
-              jq -r '.Results[].Vulnerabilities[] | "\(.VulnerabilityID) [\(.Severity)] -> \(.PkgName) @ \(.InstalledVersion)"' "$OUTPUT_FILE" || echo "Aucune vulnérabilité détectée"
-            done < images.txt
-          fi
+              python - << EOF
+                import json
+                from tabulate import tabulate
+
+                with open("$OUTPUT_FILE") as f:
+                    data = json.load(f)
+
+                rows = []
+                for result in data.get("Results", []):
+                    for vuln in result.get("Vulnerabilities", []) or []:
+                        rows.append([
+                            vuln.get("VulnerabilityID"),
+                            vuln.get("Severity"),
+                            vuln.get("PkgName"),
+                            vuln.get("InstalledVersion")
+                        ])
+
+                if not rows:
+                    print("✅ No vulnerabilities found for image $image")
+                else:
+                    print(f"\n📋 Vulnerabilities for image: {image}")
+                    print(tabulate(rows, headers=["CVE", "Severity", "Package", "Version"], tablefmt="github"))
+                EOF
+                            done < images.txt
+                          fi
 
       # ---------------------------------------------------------
       # Étape 7 : Archivage des rapports ContainerScan
