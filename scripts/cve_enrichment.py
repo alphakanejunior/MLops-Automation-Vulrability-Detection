@@ -202,8 +202,8 @@ if model_vulns:
 if container_vulns:
     print("\n🐳 CONTAINER VULNERABILITIES")
     print(tabulate(
-        [[v["image"], v["package"], v["version"], v["vulnerability_id"], v["severity"], (v["description"] or "")[:120]] for v in container_vulns],
-        headers=["Image", "Package", "Version", "VulnID", "Severity", "Description"],
+        [[v["target"], v["package"], v["version"], v["vulnerability_id"], v["severity"], (v["description"] or "")[:120]] for v in container_vulns],
+        headers=["Image/Target", "Package", "Version", "VulnID", "Severity", "Description"],
         tablefmt="github"
     ))
 
