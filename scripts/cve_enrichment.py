@@ -177,6 +177,7 @@ final_report = {
 # ==========================================================
 # Affichage console
 # ==========================================================
+print("\n")
 print("\n🔐 CODE VULNERABILITIES")
 print(tabulate(
     [[v["file"], v["line"], v.get("mapped_cve",""), v.get("nvd_severity",""), v["issue"]] for v in code_vulns],
@@ -184,6 +185,7 @@ print(tabulate(
     tablefmt="github"
 ))
 
+print("\n")
 print("\n📦 DEPENDENCY VULNERABILITIES")
 print(tabulate(
     [[v["package"], v["version"], v["cve"], v["severity"], (v["description"] or "")[:120]] for v in dependency_vulns],
@@ -192,6 +194,7 @@ print(tabulate(
 ))
 
 if model_vulns:
+    print("\n")
     print("\n🧪 MODEL VULNERABILITIES")
     print(tabulate(
         [[v["file"], v["description"], v["severity"], v["tool"]] for v in model_vulns],
@@ -200,6 +203,7 @@ if model_vulns:
     ))
 
 if container_vulns:
+    print("\n")
     print("\n🐳 CONTAINER VULNERABILITIES")
     print(tabulate(
         [[v["target"], v["package"], v["version"], v["vulnerability_id"], v["severity"], (v["description"] or "")[:120]] for v in container_vulns],
