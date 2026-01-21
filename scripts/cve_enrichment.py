@@ -102,8 +102,15 @@ print(f"🧪 Vulnérabilités MODELS détectées : {len(model_vulns)}")
 # Charger ContainerScan (Trivy)
 # ==========================================================
 container_vulns = []
-if args.container_reports and os.path.isdir(args.container_reports):
-    for f in glob.glob(os.path.join(args.container_reports, "*.json")):
+
+if args.container_reports:
+    container_files = []
+    if os.path.isdir(args.container_reports):
+        container_files = glob.glob(os.path.join(args.container_reports, "*.json"))
+    elif os.path.isfile(args.container_reports):
+        container_files = [args.container_reports]
+
+    for f in container_files:
         with open(f, "r") as jfile:
             data = json.load(jfile)
             for v in data.get("Results", []):
@@ -118,6 +125,7 @@ if args.container_reports and os.path.isdir(args.container_reports):
                         "cvss": vuln.get("CVSS", {}),
                         "description": vuln.get("Title")
                     })
+
 print(f"🐳 Vulnérabilités CONTAINERS détectées : {len(container_vulns)}")
 
 # ==========================================================
