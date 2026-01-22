@@ -3,7 +3,7 @@ requests
 
 # Frameworks web
 # Django==2.2.10
-Flask==1.0
+# Flask==1.0
 
 # Sérialisation / parsing (RCE)
 # PyYAML==5.3.1
