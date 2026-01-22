@@ -2,16 +2,15 @@ tabulate
 requests
 
 # Frameworks web
-Django==2.2.10
-Flask==1.0
+# Django==2.2.10
+# Flask==1.0
 
 # Sérialisation / parsing (RCE)
-#PyYAML==5.3.1
+# PyYAML==5.3.1
 
 # Réseau / HTTP
-#requests==2.19.1
-#urllib3==1.24.1
-
+# requests==2.19.1
+# urllib3==1.24.1
 # Machine Learning / modèles
 #tensorflow==2.5.0
 
