@@ -1,0 +1,32 @@
+########################################
+# Image tierce (upstream Dependabot)
+# Vulnérabilités OS connues et acceptées
+########################################
+
+# binutils (Ubuntu)
+CVE-2025-11412
+CVE-2025-11413
+CVE-2025-11414
+CVE-2025-11494
+CVE-2025-11839
+CVE-2025-11840
+
+# gnupg stack
+CVE-2025-68973
+
+# Python Ubuntu packages
+CVE-2025-13836
+CVE-2025-6075
+CVE-2025-8291
+
+# urllib3 (Ubuntu patched but flagged)
+CVE-2025-66418
+CVE-2025-66471
+CVE-2026-21441
+
+########################################
+# Go stdlib (image upstream, non actionnable)
+########################################
+CVE-2023-*
+CVE-2024-*
+CVE-2025-*
