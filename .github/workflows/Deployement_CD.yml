@@ -13,9 +13,11 @@
 name: CD - Secure ML Deployment Pipeline
 
 on:
-  push:
+  pull_request:
     branches:
       - main
+    types:
+      - closed
 
 env:
   REGISTRY: ghcr.io
