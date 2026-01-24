@@ -615,3 +615,11 @@ jobs:
           name: enriched-cve-report-${{ env.TIMESTAMP }}
           path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json
           retention-days: 30
+      
+      - name: Uploader le rapport CVE enrichi complet (latest)
+        uses: actions/upload-artifact@v4
+        with:
+          name: enriched-cve-report-latest
+          path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json
+          retention-days: 30
+
