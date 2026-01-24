@@ -8,7 +8,7 @@
 # - Push dans GHCR
 # - Déployer sur VM via SSH
 # - Vérifier la santé de l’application
-# =============================================================
+# ============================================================
 
 name: CD - Secure ML Deployment Pipeline
 
