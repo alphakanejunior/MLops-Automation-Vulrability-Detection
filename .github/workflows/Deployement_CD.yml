@@ -46,7 +46,7 @@ jobs:
       - name: Download Enriched CVE Report
         uses: actions/download-artifact@v4
         with:
-          name: enriched-cve-report-${{ env.TIMESTAMP }}
+          name: enriched-cve-report-latest   # nom fixe
           path: reports/cve
 
       # Politique de sécurité :
