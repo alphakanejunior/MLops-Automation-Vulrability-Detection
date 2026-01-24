@@ -370,99 +370,81 @@ jobs:
           path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
           retention-days: 30
 
- # =============================================================
+  # =============================================================
   # Job 4 : ContainerScan
   # Objectif :
-  # - Scanner les Dockerfiles
-  # - Scanner les images Docker locales
-  # Outil :
-  # - Trivy
+  # - Analyser la configuration des conteneurs AVANT le build
+  # - Scanner uniquement les Dockerfiles (Infrastructure as Code)
+  # - Détecter les mauvaises pratiques Docker :
+  #   * utilisation de root
+  #   * images non pinées (latest)
+  #   * ports exposés inutilement
+  #   * secrets hardcodés
+  #   * permissions dangereuses
   # =============================================================
   ContainerScan:
-    name: ContainerScan (Trivy)
+    name: Container Configuration Scan (Dockerfiles)
     runs-on: ubuntu-latest
-    # Dépend du scan des modèles
+
+    # Ce job ne démarre qu'après la validation des modèles ML
     needs: ModelScan
 
     steps:
       # ---------------------------------------------------------
-      # Étape 1 : Récupération du dépôt
+      # Étape 1 : Récupération du code source
+      # - Nécessaire pour accéder aux Dockerfiles
       # ---------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------
       # Étape 2 : Installation de Trivy
+      # - Trivy est utilisé ici en mode "config"
+      # - Aucun Docker daemon requis
       # ---------------------------------------------------------
       - name: Install Trivy
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget
-          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.68.2_Linux-64bit.deb
-          sudo dpkg -i trivy_0.68.2_Linux-64bit.deb
+          TRIVY_VERSION="0.68.2"
+          wget -q https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb
+          sudo dpkg -i trivy_${TRIVY_VERSION}_Linux-64bit.deb
           trivy --version
 
       # ---------------------------------------------------------
-      # Étape 3 : Authentification au GitHub Container Registry
+      # Étape 3 : Scan des Dockerfiles (Infrastructure as Code)
+      # - Recherche récursive des fichiers Dockerfile*
+      # - Génération d’un rapport JSON par Dockerfile
+      # - Le pipeline ne s’arrête pas (mode audit / observabilité)
       # ---------------------------------------------------------
-      - name: Login to GitHub Container Registry
+      - name: Scan Dockerfiles (IaC)
         run: |
-          echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-      # ---------------------------------------------------------
-      # Étape 4 : Téléchargement de la base de vulnérabilités Trivy
-      # ---------------------------------------------------------
-      - name: Download Trivy DB
-        run: trivy image --download-db-only
-
-      # ---------------------------------------------------------
-      # Étape 5 : Scan des Dockerfiles (Infrastructure as Code)
-      # ---------------------------------------------------------
-      - name: Scan Dockerfiles
-        run: |
+          # Dossier de sortie versionné
           REPORT_DIR="reports/container/${{ env.TIMESTAMP }}/dockerfiles"
           mkdir -p "$REPORT_DIR"
-          find . -name 'Dockerfile*' | while read df; do
-            SAFE_NAME=$(echo "$df" | tr '/:' '_')
-            trivy config --format json -o "${REPORT_DIR}/scan-${SAFE_NAME}.json" "$df" || echo "⚠️ Scan failed for $df"
+
+          # Recherche et scan de chaque Dockerfile
+          find . -name 'Dockerfile*' | while read -r dockerfile; do
+            SAFE_NAME=$(echo "$dockerfile" | tr '/:' '_')
+            echo "🔍 Scanning Dockerfile: $dockerfile"
+
+            trivy config \
+              --severity CRITICAL,HIGH,MEDIUM,LOW \
+              --format json \
+              --output "${REPORT_DIR}/scan-${SAFE_NAME}.json" \
+              "$dockerfile" || true
           done
 
-      # ---------------------------------------------------------
-      # Étape 6 : Scan des images Docker locales
-      # ---------------------------------------------------------
-      - name: Scan local Docker images
-        shell: bash
-        run: |
-          set -euo pipefail
-          export REPORT_DIR="reports/container/${{ env.TIMESTAMP }}/local-images"
-          mkdir -p "$REPORT_DIR"
-          docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" > images.txt || true
-
-          if [ ! -s images.txt ]; then
-            echo "⚠️ No Docker images found, skipping local image scan."
-          else
-            while read -r image; do
-              SAFE_NAME=$(echo "$image" | tr '/:' '_')
-              OUTPUT_FILE="${REPORT_DIR}/scan-${SAFE_NAME}.json"
-              trivy image --format json --ignore-unfixed --vuln-type os,library \
-                --severity CRITICAL,HIGH,MEDIUM,LOW -o "$OUTPUT_FILE" "$image" || echo "⚠️ Scan failed for $image"
-
-              # Affichage console des vulnérabilités trouvées
-              echo "📋 Vulnérabilités trouvées pour l'image $image :"
-              jq -r '.Results[].Vulnerabilities[] | "\(.VulnerabilityID) [\(.Severity)] -> \(.PkgName) @ \(.InstalledVersion)"' "$OUTPUT_FILE" || echo "Aucune vulnérabilité détectée"
-            done < images.txt
-          fi
+          echo "✅ Dockerfile configuration scan completed"
 
       # ---------------------------------------------------------
-      # Étape 7 : Archivage des rapports ContainerScan
+      # Étape 4 : Archivage des rapports ContainerScan
+      # - Conservation des résultats pour audit et corrélation CVE
       # ---------------------------------------------------------
-      - name: Upload ContainerScan Reports
+      - name: Upload Dockerfile Scan Reports
         uses: actions/upload-artifact@v4
         with:
-          name: container-scan-${{ env.TIMESTAMP }}
-          path: reports/container/${{ env.TIMESTAMP }}/
+          name: container-dockerfile-scan-${{ env.TIMESTAMP }}
+          path: reports/container/${{ env.TIMESTAMP }}/dockerfiles
           retention-days: 30
-
 
   # =============================================================
   # Job 5 : CVEEnrichment
