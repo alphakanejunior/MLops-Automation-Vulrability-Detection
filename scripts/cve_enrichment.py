@@ -99,32 +99,31 @@ model_vulns = [
 print(f"🧪 Vulnérabilités MODELS détectées : {len(model_vulns)}")
 
 # ==========================================================
-# Charger ContainerScan (Trivy) avec parcours récursif
+# Charger ContainerScan (Dockerfiles)
 # ==========================================================
 container_vulns = []
 
 if args.container_reports and os.path.exists(args.container_reports):
-    # Récupération récursive de tous les fichiers JSON dans le dossier
+    # Récupération récursive de tous les fichiers JSON Trivy (Dockerfile scan)
     container_files = glob.glob(os.path.join(args.container_reports, "**/*.json"), recursive=True)
 
     for f in container_files:
         with open(f, "r") as jfile:
             data = json.load(jfile)
-            for v in data.get("Results", []):
-                for vuln in v.get("Vulnerabilities", []) or []:
+            for result in data.get("Results", []):
+                target = result.get("Target")  # chemin du Dockerfile
+                for vuln in result.get("Misconfigurations", []) or []:
                     container_vulns.append({
                         "type": "container",
-                        "target": v.get("Target"),   # dockerfile ou image
-                        "vulnerability_id": vuln.get("VulnerabilityID"),
-                        "package": vuln.get("PkgName"),
-                        "version": vuln.get("InstalledVersion"),
+                        "dockerfile": target,
+                        "vulnerability_id": vuln.get("ID"),
                         "severity": vuln.get("Severity"),
-                        "cvss": vuln.get("CVSS", {}),
-                        "description": vuln.get("Title"),
+                        "rule": vuln.get("RuleID"),
+                        "description": vuln.get("Message"),
                         "tool": "Trivy"
                     })
 
-print(f"🐳 Vulnérabilités CONTAINERS détectées : {len(container_vulns)}")
+print(f"🐳 Vulnérabilités DOCKERFILES détectées : {len(container_vulns)}")
 
 # ==========================================================
 # Enrichissement CODE (Bandit + NVD)
@@ -204,10 +203,10 @@ if model_vulns:
 
 if container_vulns:
     print("\n ******************** Rapport_container_vulns ********************")
-    print("\n🐳 CONTAINER VULNERABILITIES")
+    print("\n🐳 DOCKERFILE VULNERABILITIES")
     print(tabulate(
-        [[v["target"], v["package"], v["version"], v["vulnerability_id"], v["severity"], (v["description"] or "")[:120]] for v in container_vulns],
-        headers=["Image/Target", "Package", "Version", "VulnID", "Severity", "Description"],
+        [[v["dockerfile"], v["vulnerability_id"], v["severity"], v["rule"], v["description"]] for v in container_vulns],
+        headers=["Dockerfile", "VulnID", "Severity", "Rule", "Description"],
         tablefmt="github"
     ))
 
