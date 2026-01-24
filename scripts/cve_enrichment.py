@@ -176,20 +176,21 @@ final_report = {
 # ==========================================================
 # Affichage console
 # ==========================================================
-print("\n ******************** Rapport_code_vulns ********************")
-print("\n🔐 CODE VULNERABILITIES")
-print(tabulate(
-    [[v["file"], v["line"], v.get("mapped_cve",""), v.get("nvd_severity",""), v["issue"]] for v in code_vulns],
-    headers=["File", "Line", "CVE", "Severity", "Issue"],
-    tablefmt="github"
+if code_vulns:
+    print("\n ******************** Rapport_code_vulns ********************")
+    print("\n🔐 CODE VULNERABILITIES")
+    print(tabulate(
+        [[v["file"], v["line"], v.get("mapped_cve",""), v.get("nvd_severity",""), v["issue"]] for v in code_vulns],
+        headers=["File", "Line", "CVE", "Severity", "Issue"],
+        tablefmt="github"
 ))
-
-print("\n ******************** Rapport_dependency_vulns ********************")
-print("\n📦 DEPENDENCY VULNERABILITIES")
-print(tabulate(
-    [[v["package"], v["version"], v["cve"], v["severity"], (v["description"] or "")[:120]] for v in dependency_vulns],
-    headers=["Package", "Version", "CVE", "Severity", "Description"],
-    tablefmt="github"
+if dependency_vulns:
+    print("\n ******************** Rapport_dependency_vulns ********************")
+    print("\n📦 DEPENDENCY VULNERABILITIES")
+    print(tabulate(
+        [[v["package"], v["version"], v["cve"], v["severity"], (v["description"] or "")[:120]] for v in dependency_vulns],
+        headers=["Package", "Version", "CVE", "Severity", "Description"],
+        tablefmt="github"
 ))
 
 if model_vulns:
