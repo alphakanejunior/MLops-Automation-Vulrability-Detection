@@ -177,7 +177,7 @@ final_report = {
 # Affichage console
 # ==========================================================
 if code_vulns:
-    print("\n ******************** Rapport_code_vulns ********************")
+    print("\n ***************************** Rapport_code_vulns *****************************")
     print("\n🔐 CODE VULNERABILITIES")
     print(tabulate(
         [[v["file"], v["line"], v.get("mapped_cve",""), v.get("nvd_severity",""), v["issue"]] for v in code_vulns],
@@ -185,7 +185,7 @@ if code_vulns:
         tablefmt="github"
 ))
 if dependency_vulns:
-    print("\n ******************** Rapport_dependency_vulns ********************")
+    print("\n **************************** Rapport_dependency_vulns ******************************")
     print("\n📦 DEPENDENCY VULNERABILITIES")
     print(tabulate(
         [[v["package"], v["version"], v["cve"], v["severity"], (v["description"] or "")[:120]] for v in dependency_vulns],
@@ -194,7 +194,7 @@ if dependency_vulns:
 ))
 
 if model_vulns:
-    print("\n ******************** Rapport_model_vulns ********************")
+    print("\n ***************************** Rapport_model_vulns *****************************")
     print("\n🧪 MODEL VULNERABILITIES")
     print(tabulate(
         [[v["file"], v["description"], v["severity"], v["tool"]] for v in model_vulns],
@@ -203,7 +203,7 @@ if model_vulns:
     ))
 
 if container_vulns:
-    print("\n ******************** Rapport_container_vulns ********************")
+    print("\n ****************************** Rapport_dockerfile_vulns ******************************")
     print("\n🐳 DOCKERFILE VULNERABILITIES")
     print(tabulate(
         [[v["dockerfile"], v["vulnerability_id"], v["severity"], v["rule"], v["description"]] for v in container_vulns],
