@@ -43,12 +43,13 @@ jobs:
       - uses: actions/checkout@v4
 
       # Téléchargement du rapport CVE enrichi produit en CI
-      - name: Download Enriched CVE Report
-        uses: actions/download-artifact@v4
+      - name: Upload Bandit Report
+        uses: actions/upload-artifact@v4
         with:
-          name: enriched-cve-report-latest   # nom fixe
-          path: reports/cve
-
+          name: enriched-cve-report-latest
+          path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json
+          retention-days: 30
+          
       # Politique de sécurité :
       # - BLOQUE le pipeline si une CVE CRITICAL est détectée
       - name: Evaluate CVE Policy
