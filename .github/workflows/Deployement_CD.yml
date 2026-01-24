@@ -13,11 +13,17 @@
 name: CD - Secure ML Deployment Pipeline
 
 on:
+  # 1️⃣ Merge PR vers main
   pull_request:
     branches:
       - main
     types:
       - closed
+
+  # 2️⃣ Push direct sur main
+  push:
+    branches:
+      - main
 
 env:
   REGISTRY: ghcr.io
