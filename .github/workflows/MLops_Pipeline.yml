@@ -436,7 +436,55 @@ jobs:
           echo "✅ Dockerfile configuration scan completed"
 
       # ---------------------------------------------------------
-      # Étape 4 : Archivage des rapports ContainerScan
+      # Étape 4 bis : Affichage console Dockerfile Scan (avec IDs sécurité)
+      # - Les règles Trivy sont traitées comme des CVE logiques
+      # - Compatible avec CVEEnrichment
+      # ---------------------------------------------------------
+      - name: Display Dockerfile Scan Results (with Security IDs)
+        run: |
+          python - << 'EOF'
+          import json
+          import glob
+          from tabulate import tabulate
+
+          reports = glob.glob("reports/container/${{ env.TIMESTAMP }}/dockerfiles/*.json")
+
+          rows = []
+
+          for report in reports:
+              with open(report) as f:
+                  data = json.load(f)
+
+              for result in data.get("Results", []) or []:
+                  target = result.get("Target", "")
+                  for misconf in result.get("Misconfigurations", []) or []:
+                      rows.append([
+                          target,
+                          misconf.get("ID"),                 # ID Trivy (DSxxx)
+                          misconf.get("Severity"),
+                          misconf.get("Title"),
+                          misconf.get("Message", "")[:80]
+                      ])
+
+          if not rows:
+              print("✅ No Dockerfile security issues found")
+          else:
+              print("\n🐳 Dockerfile Security Issues (Trivy IaC):")
+              print(tabulate(
+                  rows,
+                  headers=[
+                      "Dockerfile",
+                      "Security ID",
+                      "Severity",
+                      "Rule",
+                      "Details"
+                  ],
+                  tablefmt="github"
+              ))
+          EOF
+
+      # ---------------------------------------------------------
+      # Étape 5 : Archivage des rapports ContainerScan
       # - Conservation des résultats pour audit et corrélation CVE
       # ---------------------------------------------------------
       - name: Upload Dockerfile Scan Reports
