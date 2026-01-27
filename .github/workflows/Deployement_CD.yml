@@ -18,19 +18,11 @@ on:
       - Full Project Automatisation de la gestion des vulnérabilités dans les pipelines MLops
     types:
       - completed
-      
-# ⚠️ OBLIGATOIRE pour lire les artifacts du CI
-permissions:
-  actions: read
-  contents: read
-  packages: write
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: mlapp
   TIMESTAMP: ${{ github.run_id }}
-  # SHA du commit CI pour tag Docker
-  CI_SHA: ${{ github.event.workflow_run.head_sha }}
 
 jobs:
   # =============================================================
@@ -44,28 +36,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 🔽 Téléchargement des artifacts DU CI
-      - name: Download CI Artifacts
+      # 🔽 Téléchargement de l’artifact CI enrichi
+      - name: Download Enriched CVE Report
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ github.event.workflow_run.id }}
-          path: artifacts
+          name: enriched-cve-report-latest
+          path: reports/cve
 
       - name: Evaluate CVE Policy
         run: |
           python << 'EOF'
-          import json, glob, sys
+          import json, sys, os
 
-          files = glob.glob("artifacts/enriched-cve-report-*/enriched_cves.json")
+          report_path = "reports/cve/enriched_cves.json"
 
-          if not files:
+          if not os.path.exists(report_path):
               print("❌ Enriched CVE report not found")
               sys.exit(1)
 
-          report = files[0]
-          print(f"📄 Using CVE report: {report}")
-
-          with open(report) as f:
+          with open(report_path) as f:
               data = json.load(f)
 
           vulns = data.get("vulnerabilities", [])
@@ -81,7 +71,7 @@ jobs:
           EOF
 
   # =============================================================
-  # Job 2 : Build Docker Image
+  # Job 2 : Build de l’image Docker
   # =============================================================
   BuildImage:
     name: Build Docker Image
@@ -94,11 +84,11 @@ jobs:
       - name: Build Docker Image
         run: |
           docker build \
-            -t ${{ env.IMAGE_NAME }}:${{ env.CI_SHA }} \
+            -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
             .
 
   # =============================================================
-  # Job 3 : Scan Docker Image (BLOQUANT)
+  # Job 3 : Scan de l’image Docker finale (BLOQUANT)
   # =============================================================
   ImageScan:
     name: Trivy Scan - Docker Image
@@ -119,10 +109,10 @@ jobs:
             --exit-code 1 \
             --severity HIGH,CRITICAL \
             --ignore-unfixed \
-            ${{ env.IMAGE_NAME }}:${{ env.CI_SHA }}
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
   # =============================================================
-  # Job 4 : Push Docker Image
+  # Job 4 : Push de l’image dans GHCR
   # =============================================================
   PushImage:
     name: Push Docker Image
@@ -140,13 +130,12 @@ jobs:
 
       - name: Tag & Push Image
         run: |
-          docker tag ${{ env.IMAGE_NAME }}:${{ env.CI_SHA }} \
-            ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ env.CI_SHA }}
-
-          docker push ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ env.CI_SHA }}
+          docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
   # =============================================================
-  # Job 5 : Déploiement sur VM
+  # Job 5 : Déploiement sur VM (SSH sécurisé)
   # =============================================================
   Deploy:
     name: Deploy Application
@@ -161,18 +150,16 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            docker pull ghcr.io/${{ github.repository }}/mlapp:${{ env.CI_SHA }}
-
+            docker pull ghcr.io/${{ github.repository }}/mlapp:${{ github.sha }}
             docker stop mlapp || true
             docker rm mlapp || true
-
             docker run -d \
               --name mlapp \
               -p 8000:8000 \
-              ghcr.io/${{ github.repository }}/mlapp:${{ env.CI_SHA }}
+              ghcr.io/${{ github.repository }}/mlapp:${{ github.sha }}
 
   # =============================================================
-  # Job 6 : Health Check
+  # Job 6 : Health Check post-déploiement
   # =============================================================
   HealthCheck:
     name: Health Check
