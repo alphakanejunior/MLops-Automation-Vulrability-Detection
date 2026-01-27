@@ -18,22 +18,27 @@ on:
       - Full Project Automatisation de la gestion des vulnérabilités dans les pipelines MLops
     types:
       - completed
+      
+# ⚠️ OBLIGATOIRE pour lire les artifacts du CI
+permissions:
+  actions: read
+  contents: read
+  packages: write
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: mlapp
   TIMESTAMP: ${{ github.run_id }}
+  # SHA du commit CI pour tag Docker
+  CI_SHA: ${{ github.event.workflow_run.head_sha }}
 
+jobs:
   # =============================================================
   # Job 1 : Security Gate (CVE enrichies depuis le CI)
   # =============================================================
-
-jobs:
   SecurityGate:
     name: Security Gate (CVE Policy)
     runs-on: ubuntu-latest
-
-    # On s’assure que le CI a réussi
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
@@ -75,8 +80,8 @@ jobs:
           print("✅ CVE gate passed")
           EOF
 
-  # ============================================================
-  # Job 2 : Build de l’image Docker (local runner)
+  # =============================================================
+  # Job 2 : Build Docker Image
   # =============================================================
   BuildImage:
     name: Build Docker Image
@@ -86,15 +91,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Build local uniquement (pas encore pushée)
       - name: Build Docker Image
         run: |
           docker build \
-            -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ env.IMAGE_NAME }}:${{ env.CI_SHA }} \
             .
 
   # =============================================================
-  # Job 3 : Scan de l’image Docker finale (BLOQUANT)
+  # Job 3 : Scan Docker Image (BLOQUANT)
   # =============================================================
   ImageScan:
     name: Trivy Scan - Docker Image
@@ -102,27 +106,23 @@ jobs:
     needs: BuildImage
 
     steps:
-      # Installation manuelle de Trivy (version maîtrisée)
       - name: Install Trivy
         run: |
-          TRIVY_VERSION="0.68.1"
-          wget -q https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
-          tar zxvf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
-          sudo mv trivy /usr/local/bin/
+          TRIVY_VERSION="0.68.2"
+          wget -q https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb
+          sudo dpkg -i trivy_${TRIVY_VERSION}_Linux-64bit.deb
+          trivy --version
 
-      # Scan BLOQUANT :
-      # - HIGH et CRITICAL
-      # - ignore les vulnérabilités non corrigées
       - name: Scan Docker Image (blocking)
         run: |
           trivy image \
             --exit-code 1 \
             --severity HIGH,CRITICAL \
             --ignore-unfixed \
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:${{ env.CI_SHA }}
 
   # =============================================================
-  # Job 4 : Push de l’image dans GHCR
+  # Job 4 : Push Docker Image
   # =============================================================
   PushImage:
     name: Push Docker Image
@@ -132,23 +132,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Authentification au registre GHCR
       - name: Login to GHCR
         run: |
           echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io \
             -u "${{ github.actor }}" \
             --password-stdin
 
-      # Tag + Push uniquement si scan OK
       - name: Tag & Push Image
         run: |
-          docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker tag ${{ env.IMAGE_NAME }}:${{ env.CI_SHA }} \
+            ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ env.CI_SHA }}
 
-          docker push ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ env.CI_SHA }}
 
   # =============================================================
-  # Job 5 : Déploiement sur VM (SSH sécurisé)
+  # Job 5 : Déploiement sur VM
   # =============================================================
   Deploy:
     name: Deploy Application
@@ -163,7 +161,7 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            docker pull ghcr.io/${{ github.repository }}/mlapp:${{ github.sha }}
+            docker pull ghcr.io/${{ github.repository }}/mlapp:${{ env.CI_SHA }}
 
             docker stop mlapp || true
             docker rm mlapp || true
@@ -171,10 +169,10 @@ jobs:
             docker run -d \
               --name mlapp \
               -p 8000:8000 \
-              ghcr.io/${{ github.repository }}/mlapp:${{ github.sha }}
+              ghcr.io/${{ github.repository }}/mlapp:${{ env.CI_SHA }}
 
   # =============================================================
-  # Job 6 : Health Check post-déploiement
+  # Job 6 : Health Check
   # =============================================================
   HealthCheck:
     name: Health Check
@@ -182,11 +180,9 @@ jobs:
     needs: Deploy
 
     steps:
-      # Attente pour laisser l’app démarrer
       - name: Wait for startup
         run: sleep 15
 
-      # Vérification endpoint /health
       - name: API Health Check
         run: |
           curl -f http://${{ secrets.VM_HOST }}:8000/health
