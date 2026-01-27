@@ -27,7 +27,7 @@ env:
   # =============================================================
   # Job 1 : Security Gate (CVE enrichies depuis le CI)
   # =============================================================
-  
+
 jobs:
   SecurityGate:
     name: Security Gate (CVE Policy)
@@ -40,19 +40,27 @@ jobs:
       - uses: actions/checkout@v4
 
       # 🔽 Téléchargement des artifacts DU CI
-      - name: Download Enriched CVE Report
+      - name: Download CI Artifacts
         uses: actions/download-artifact@v4
         with:
           run-id: ${{ github.event.workflow_run.id }}
-          name: enriched-cve-report-${{ github.event.workflow_run.run_id }}
-          path: reports/cve
+          path: artifacts
 
       - name: Evaluate CVE Policy
         run: |
           python << 'EOF'
-          import json, sys
+          import json, glob, sys
 
-          with open("reports/cve/enriched_cves.json") as f:
+          files = glob.glob("artifacts/enriched-cve-report-*/enriched_cves.json")
+
+          if not files:
+              print("❌ Enriched CVE report not found")
+              sys.exit(1)
+
+          report = files[0]
+          print(f"📄 Using CVE report: {report}")
+
+          with open(report) as f:
               data = json.load(f)
 
           vulns = data.get("vulnerabilities", [])
