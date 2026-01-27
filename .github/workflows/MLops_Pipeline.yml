@@ -10,14 +10,19 @@ name: Full Project Automatisation de la gestion des vulnérabilités dans les pi
 # - push sur la branche Develop
 # - pull request vers la branche Develop
 # =============================================================
+
 on:
+ # 🔹 Push sur les branches Develop ou main
   push:
     branches:
-      - Develop
-      - main
+      - Develop  # CI régulière sur Develop
+      - main     # CI/CD sur main (build + déploiement)
+
+  # 🔹 Pull Request vers Develop ou main
   pull_request:
     branches:
-      - Develop
+      - Develop  # Vérifie les PR vers Develop
+      - main     # Vérifie les PR vers main (prévention de vulnérabilités)
 
 # =============================================================
 # Variables d’environnement globales
@@ -617,10 +622,119 @@ jobs:
           path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json
           retention-days: 30
       
-      - name: Uploader le rapport CVE enrichi complet (latest)
-        uses: actions/upload-artifact@v4
-        with:
-          name: enriched-cve-report-latest
-          path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json
-          retention-days: 30
 
+          # =============================================================
+# CD : Jobs de déploiement sur main
+# =============================================================
+
+  SecurityGate:
+    name: Security Gate (CVE Policy)
+    runs-on: ubuntu-latest
+    needs: CVEEnrichment
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      # ✅ Étape 1 : Vérification des vulnérabilités critiques
+      # On s’assure que le rapport CVE enrichi généré en CI/CD existe
+      # Si le fichier est absent, le pipeline échoue immédiatement
+      - name: Evaluate CVE Policy
+        run: |
+          REPORT="reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json"
+          if [ ! -f "$REPORT" ]; then
+            echo "❌ Enriched CVE report not found"
+            exit 1
+          fi
+          python - << 'EOF'
+          import json, sys
+          # Lecture du rapport CVE enrichi
+          with open("reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json") as f:
+              data = json.load(f)
+          # Filtrer les CVEs critiques
+          critical = [v for v in data.get("vulnerabilities", []) if v.get("severity")=="CRITICAL"]
+          if critical:
+              print("❌ CRITICAL CVEs detected")
+              sys.exit(1)
+          print("✅ CVE gate passed")
+          EOF
+
+  BuildImage:
+    runs-on: ubuntu-latest
+    needs: SecurityGate
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      # ✅ Étape 2 : Build de l'image Docker
+      # On construit l'image Docker localement avec le SHA du commit
+      - name: Build Docker Image
+        run: docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
+
+  ImageScan:
+    runs-on: ubuntu-latest
+    needs: BuildImage
+    if: github.ref == 'refs/heads/main'
+    steps:
+      # ✅ Étape 3 : Installer Trivy pour le scan de l'image
+      - name: Install Trivy
+        run: |
+          TRIVY_VERSION="0.68.2"
+          wget -q https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb
+          sudo dpkg -i trivy_${TRIVY_VERSION}_Linux-64bit.deb
+          trivy --version
+
+      # ✅ Étape 4 : Scan de l'image Docker
+      # Scan bloquant : exit-code 1 si des vulnérabilités HIGH ou CRITICAL sont trouvées
+      - name: Scan Docker Image
+        run: trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  PushImage:
+    runs-on: ubuntu-latest
+    needs: ImageScan
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      # ✅ Étape 5 : Authentification au registre GHCR
+      - name: Login to GHCR
+        run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # ✅ Étape 6 : Tag et Push de l'image Docker
+      # L'image est taggée avec le SHA du commit et pushée vers GHCR
+      - name: Tag & Push Image
+        run: |
+          docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  Deploy:
+    runs-on: ubuntu-latest
+    needs: PushImage
+    if: github.ref == 'refs/heads/main'
+    steps:
+      # ✅ Étape 7 : Déploiement sur VM via SSH
+      # Pull de l'image depuis GHCR, arrêt du container existant, puis lancement du nouveau
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            docker pull ghcr.io/${{ github.repository }}/mlapp:${{ github.sha }}
+            docker stop mlapp || true
+            docker rm mlapp || true
+            docker run -d --name mlapp -p 8000:8000 ghcr.io/${{ github.repository }}/mlapp:${{ github.sha }}
+
+  HealthCheck:
+    runs-on: ubuntu-latest
+    needs: Deploy
+    if: github.ref == 'refs/heads/main'
+    steps:
+      # ✅ Étape 8 : Vérification que l'application est opérationnelle
+      # Attente pour laisser l'application démarrer
+      - name: Wait for startup
+        run: sleep 15
+
+      # Check endpoint /health pour s'assurer que l'application répond correctement
+      - name: API Health Check
+        run: curl -f http://${{ secrets.VM_HOST }}:8000/health
