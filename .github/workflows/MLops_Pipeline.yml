@@ -559,7 +559,7 @@ jobs:
             echo "⬇️ Téléchargement NVD $YEAR..."
             curl -L --retry 5 --retry-delay 10 \
               "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-${YEAR}.json.gz" \
-              -o "nvd_db/nvdcve-2.0-${YEAR}.json.gz"
+              -o "nvd_db/nvdcve-2.0-${YEAR}.json.gz"|| true
             gunzip -f "nvd_db/nvdcve-2.0-${YEAR}.json.gz"
           done
           echo "✅ NVD 2.0 prête"
