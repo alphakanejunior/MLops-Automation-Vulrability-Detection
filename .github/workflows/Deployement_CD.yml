@@ -13,45 +13,40 @@
 name: CD - Secure ML Deployment Pipeline
 
 on:
-  # 1️⃣ Merge PR vers main
-  pull_request:
-    branches:
-      - main
+  workflow_run:
+    workflows:
+      - Full Project Automatisation de la gestion des vulnérabilités dans les pipelines MLops
     types:
-      - closed
-
-  # 2️⃣ Push direct sur main
-  push:
-    branches:
-      - main
+      - completed
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: mlapp
   TIMESTAMP: ${{ github.run_id }}
 
-jobs:
   # =============================================================
   # Job 1 : Security Gate (CVE enrichies depuis le CI)
   # =============================================================
+  
+jobs:
   SecurityGate:
     name: Security Gate (CVE Policy)
     runs-on: ubuntu-latest
 
+    # On s’assure que le CI a réussi
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
     steps:
-      # Récupération du code (utile pour scripts / contexte)
       - uses: actions/checkout@v4
 
-      # Téléchargement du rapport CVE enrichi produit en CI
+      # 🔽 Téléchargement des artifacts DU CI
       - name: Download Enriched CVE Report
         uses: actions/download-artifact@v4
         with:
-          name: enriched-cve-report-latest
+          run-id: ${{ github.event.workflow_run.id }}
+          name: enriched-cve-report-${{ github.event.workflow_run.run_id }}
           path: reports/cve
 
-
-      # Politique de sécurité :
-      # - BLOQUE le pipeline si une CVE CRITICAL est détectée
       - name: Evaluate CVE Policy
         run: |
           python << 'EOF'
@@ -66,10 +61,10 @@ jobs:
           if critical:
               print("❌ CRITICAL CVEs detected:")
               for v in critical:
-                  print(f"- {v.get('cve_id')}")
+                  print(f"- {v.get('cve')}")
               sys.exit(1)
 
-          print("✅ CVE gate passed (no CRITICAL vulnerabilities)")
+          print("✅ CVE gate passed")
           EOF
 
   # ============================================================
