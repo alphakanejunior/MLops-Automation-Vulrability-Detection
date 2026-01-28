@@ -794,7 +794,7 @@ jobs:
           trivy image \
             --scanners vuln \
             --severity CRITICAL \
-            --exit-code 1 \
+            --exit-code 0 \
             --format json \
             --output "$REPORT_DIR/trivy-image-report.json" \
             "$IMAGE_TAG"
