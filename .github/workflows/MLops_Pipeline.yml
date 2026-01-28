@@ -10,15 +10,18 @@ name: Full Project Automatisation de la gestion des vulnérabilités dans les pi
 # - push sur la branche Develop
 # - pull request vers la branche Develop
 # =============================================================
+
 on:
   push:
     branches:
+      - Develop
       - main
   pull_request:
     branches:
+      - Develop
       - main
-      
 
+      
 # =============================================================
 # Variables d’environnement globales
 # =============================================================
@@ -26,6 +29,7 @@ env:
   # Identifiant unique basé sur l'exécution GitHub
   # Utilisé pour versionner tous les rapports générés
   TIMESTAMP: ${{ github.run_id }}
+  IMAGE_NAME: mlapp
 
 jobs:
   # =============================================================
@@ -616,3 +620,34 @@ jobs:
           name: enriched-cve-report-${{ env.TIMESTAMP }}
           path: reports/cve_enrichment/${{ env.TIMESTAMP }}/enriched_cves.json
           retention-days: 30
+
+  # =============================================================
+  # CD Jobs (main only)
+  # =============================================================
+  SecurityGate:
+    name: Security Gate (CVE Policy)
+    runs-on: ubuntu-latest
+    needs: CVEEnrichment
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: enriched-cve-report-latest
+          path: reports/cve_enrichment
+      - run: |
+          REPORT="reports/cve_enrichment/enriched_cves.json"
+          if [ ! -f "$REPORT" ]; then
+            echo "❌ Enriched CVE report not found"
+            exit 1
+          fi
+          python - << 'EOF'
+          import json, sys
+          with open("reports/cve_enrichment/enriched_cves.json") as f:
+              data=json.load(f)
+          critical=[v for v in data.get("vulnerabilities",[]) if v.get("severity")=="CRITICAL"]
+          if critical:
+              print("❌ CRITICAL CVEs detected")
+              sys.exit(1)
+          print("✅ CVE gate passed")
+          EOF
