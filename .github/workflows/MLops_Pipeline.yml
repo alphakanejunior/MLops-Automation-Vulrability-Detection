@@ -861,39 +861,35 @@ jobs:
   PushImage:
     name: Push Docker Image to GHCR
     runs-on: ubuntu-latest
-    needs: ImageScan  # Nécessite que l’image ait été scannée
+    needs: ImageScan
     if: github.ref == 'refs/heads/main'
 
     steps:
       # ---------------------------------------------------------
-      # Étape 1 : Télécharger l’image Docker sauvegardée
-      # ---------------------------------------------------------
-      - name: Download Docker image artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image
-
-      - name: Load Docker image
-        run: docker load -i image.tar
-
-      # ---------------------------------------------------------
-      # Étape 2 : Connexion à GitHub Container Registry
-      # - Utilisation de GITHUB_TOKEN du workflow
+      # Login au GitHub Container Registry
       # ---------------------------------------------------------
       - name: Login to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       # ---------------------------------------------------------
-      # Étape 3 : Tag et push de l’image sur GHCR
+      # Forcer le nom du repository en lowercase (obligatoire Docker)
       # ---------------------------------------------------------
-      - name: Tag & Push image
+      - name: Set lowercase repository name
+        run: |
+          echo "REPO_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      # ---------------------------------------------------------
+      # Tag + Push de l’image construite
+      # ---------------------------------------------------------
+      - name: Tag and push image
         run: |
           LOCAL_IMAGE="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
-          REMOTE_IMAGE="ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ github.run_id }}"
+          REMOTE_IMAGE="ghcr.io/${REPO_LOWER}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+
+          echo "🚀 Pushing $REMOTE_IMAGE"
 
           docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE"
           docker push "$REMOTE_IMAGE"
-
 
 
   # =============================================================
