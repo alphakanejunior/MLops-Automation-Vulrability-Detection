@@ -832,6 +832,12 @@ jobs:
           path: reports/image/${{ env.TIMESTAMP }}/trivy-image-report.json
           retention-days: 30
 
+# =============================================================
+# Job 9 : PushImage 
+# Objectif : 
+# - Pousser l’image Docker scannée vers GHCR
+# - Seulement si le scan d’image est passé sans CRITICAL
+# =============================================================
 
   PushImage:
     name: Push Docker Image to GHCR
