@@ -13,10 +13,11 @@ name: Full Project Automatisation de la gestion des vulnérabilités dans les pi
 on:
   push:
     branches:
-      - Develop
+      - main
   pull_request:
     branches:
-      - Develop
+      - main
+      
 
 # =============================================================
 # Variables d’environnement globales
