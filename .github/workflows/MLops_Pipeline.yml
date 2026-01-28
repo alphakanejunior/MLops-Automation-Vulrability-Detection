@@ -711,3 +711,111 @@ jobs:
       # ---------------------------------------------------------
       - name: List Docker images
         run: docker images | grep "${{ env.IMAGE_NAME }}"
+  # =============================================================
+  # Job 8 : ImageScan
+  # Objectif :
+  # - Scanner l’image Docker construite
+  # - Détecter les vulnérabilités OS + libs
+  # - Bloquer si CVE CRITICAL
+  # Outil :
+  # - Trivy (image scan)
+  # =============================================================
+  ImageScan:
+    name: Container Image Vulnerability Scan (Trivy)
+    runs-on: ubuntu-latest
+
+    needs: ImageBuild
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      # ---------------------------------------------------------
+      # Étape 1 : Checkout (nécessaire pour cohérence du run)
+      # ---------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------
+      # Étape 2 : Installation de Trivy
+      # ---------------------------------------------------------
+      - name: Install Trivy
+        run: |
+          TRIVY_VERSION="0.68.2"
+          wget -q https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb
+          sudo dpkg -i trivy_${TRIVY_VERSION}_Linux-64bit.deb
+          trivy --version
+
+      # ---------------------------------------------------------
+      # Étape 3 : Rebuild de l’image (runner éphémère)
+      # ⚠️ Chaque job a son propre runner
+      # ---------------------------------------------------------
+      - name: Build Docker image (for scan)
+        run: |
+          IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
+          docker build -t "$IMAGE_TAG" .
+
+      # ---------------------------------------------------------
+      # Étape 4 : Scan Trivy Image
+      # - Rapport JSON versionné
+      # - Échec si CRITICAL
+      # ---------------------------------------------------------
+      - name: Run Trivy Image Scan
+        run: |
+          REPORT_DIR="reports/image/${{ env.TIMESTAMP }}"
+          mkdir -p "$REPORT_DIR"
+
+          IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
+
+          trivy image \
+            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            --scanners vuln \
+            --exit-code 1 \
+            --format json \
+            --output "$REPORT_DIR/trivy-image-report.json" \
+            "$IMAGE_TAG"
+
+      # ---------------------------------------------------------
+      # Étape 5 : Affichage lisible des résultats
+      # ---------------------------------------------------------
+      - name: Display Image Scan Results
+        run: |
+          python - << 'EOF'
+          import json
+          from tabulate import tabulate
+
+          report = "reports/image/${{ env.TIMESTAMP }}/trivy-image-report.json"
+          with open(report) as f:
+              data = json.load(f)
+
+          rows = []
+          for result in data.get("Results", []) or []:
+              target = result.get("Target", "")
+              for vuln in result.get("Vulnerabilities", []) or []:
+                  rows.append([
+                      target,
+                      vuln.get("PkgName"),
+                      vuln.get("InstalledVersion"),
+                      vuln.get("VulnerabilityID"),
+                      vuln.get("Severity"),
+                      vuln.get("Title", "")[:80]
+                  ])
+
+          if not rows:
+              print("✅ No image vulnerabilities found")
+          else:
+              print("\n🛑 Container Image Vulnerabilities (Trivy):")
+              print(tabulate(
+                  rows,
+                  headers=["Layer", "Package", "Version", "CVE", "Severity", "Description"],
+                  tablefmt="github"
+              ))
+          EOF
+
+      # ---------------------------------------------------------
+      # Étape 6 : Archivage du rapport ImageScan
+      # ---------------------------------------------------------
+      - name: Upload Image Scan Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-report-${{ env.TIMESTAMP }}
+          path: reports/image/${{ env.TIMESTAMP }}/trivy-image-report.json
+          retention-days: 30
