@@ -866,20 +866,34 @@ jobs:
 
     steps:
       # ---------------------------------------------------------
-      # Login au GitHub Container Registry
+      # Récupération de l’image Docker construite
+      # ---------------------------------------------------------
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      # ---------------------------------------------------------
+      # Chargement de l’image dans Docker
+      # ---------------------------------------------------------
+      - name: Load Docker image
+        run: docker load -i image.tar
+
+      # ---------------------------------------------------------
+      # Login GHCR
       # ---------------------------------------------------------
       - name: Login to GHCR
         run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       # ---------------------------------------------------------
-      # Forcer le nom du repository en lowercase (obligatoire Docker)
+      # Normalisation du nom du repo (lowercase obligatoire)
       # ---------------------------------------------------------
       - name: Set lowercase repository name
         run: |
           echo "REPO_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       # ---------------------------------------------------------
-      # Tag + Push de l’image construite
+      # Tag + Push
       # ---------------------------------------------------------
       - name: Tag and push image
         run: |
@@ -890,72 +904,3 @@ jobs:
 
           docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE"
           docker push "$REMOTE_IMAGE"
-
-
-  # =============================================================
-  # Job 9 : Deploy
-  # Objectif :
-  # - Déployer l’image Docker sur la VM distante
-  # - Stop et suppression de l’ancien conteneur si présent
-  # - Lancement d’un nouveau conteneur exposant le port 8000
-  # Déclenché uniquement sur la branche main
-  # Dépend du job PushImage
-  # =============================================================
-  Deploy:
-    name: Deploy Docker Image to Remote VM
-    runs-on: ubuntu-latest
-    needs: PushImage
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      # ---------------------------------------------------------
-      # Étape 1 : Déploiement via SSH
-      # - Utilise l'action appleboy/ssh-action
-      # - Variables sensibles stockées dans GitHub Secrets
-      # ---------------------------------------------------------
-      - name: SSH deploy container
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VM_HOST }}          # Adresse IP ou hostname de la VM
-          username: ${{ secrets.VM_USER }}      # Utilisateur SSH
-          key: ${{ secrets.VM_SSH_KEY }}        # Clé privée SSH
-          script: |
-            # Pull de la dernière image construite
-            docker pull ghcr.io/${{ github.repository }}/mlapp:${{ github.sha }}
-
-            # Arrêt du conteneur existant (ignore erreur si absent)
-            docker stop mlapp || true
-
-            # Suppression du conteneur existant (ignore erreur si absent)
-            docker rm mlapp || true
-
-            # Démarrage d’un nouveau conteneur en mode détaché
-            docker run -d --name mlapp -p 8000:8000 \
-              ghcr.io/${{ github.repository }}/mlapp:${{ github.sha }}
-
-  # =============================================================
-  # Job 10 : HealthCheck
-  # Objectif :
-  # - Vérifier que le conteneur déployé est opérationnel
-  # - Effectue un curl sur l’endpoint /health de l’application
-  # Dépend du job Deploy
-  # =============================================================
-  HealthCheck:
-    name: Check Deployed Service Health
-    runs-on: ubuntu-latest
-    needs: Deploy
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      # ---------------------------------------------------------
-      # Étape 1 : Pause pour laisser le conteneur démarrer
-      # ---------------------------------------------------------
-      - name: Wait for container to start
-        run: sleep 15
-
-      # ---------------------------------------------------------
-      # Étape 2 : Vérification de la santé de l’application
-      # - Échec du job si curl retourne une erreur
-      # ---------------------------------------------------------
-      - name: Perform Health Check
-        run: curl -f http://${{ secrets.VM_HOST }}:8000/health
