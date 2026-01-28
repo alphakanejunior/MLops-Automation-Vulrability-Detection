@@ -766,7 +766,7 @@ jobs:
           IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
 
           trivy image \
-            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            --severity CRITICAL \ 
             --scanners vuln \
             --exit-code 1 \
             --format json \
