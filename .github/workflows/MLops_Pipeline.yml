@@ -662,3 +662,52 @@ jobs:
 
           print("✅ CVE gate passed")
           EOF
+  # =============================================================
+  # Job 7 : ImageBuild
+  # Objectif :
+  # - Construire l’image Docker de l’application ML
+  # - Seulement si la SecurityGate est validée
+  # - Image taggée avec le run GitHub (traçabilité)
+  # =============================================================
+  ImageBuild:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+
+    # 🚨 Build uniquement si la sécurité est validée
+    needs: SecurityGate
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      # ---------------------------------------------------------
+      # Étape 1 : Récupération du code source
+      # ---------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------
+      # Étape 2 : Set up Docker Buildx
+      # ---------------------------------------------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ---------------------------------------------------------
+      # Étape 3 : Build de l’image Docker
+      # - Pas de push (mode audit / local)
+      # - Tag versionné avec github.run_id
+      # ---------------------------------------------------------
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
+          echo "🐳 Building image $IMAGE_TAG"
+
+          docker build \
+            -t "$IMAGE_TAG" \
+            .
+
+          echo "✅ Docker image built: $IMAGE_TAG"
+
+      # ---------------------------------------------------------
+      # Étape 4 : Vérification de l’image construite
+      # ---------------------------------------------------------
+      - name: List Docker images
+        run: docker images | grep "${{ env.IMAGE_NAME }}"
