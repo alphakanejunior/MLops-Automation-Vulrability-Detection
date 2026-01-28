@@ -668,74 +668,82 @@ jobs:
   # - Construire l’image Docker de l’application ML
   # - Seulement si la SecurityGate est validée
   # - Image taggée avec le run GitHub (traçabilité)
-  # =============================================================
+  # =============================================================ImageBuild:
   ImageBuild:
     name: Build Docker Image
     runs-on: ubuntu-latest
-
-    # 🚨 Build uniquement si la sécurité est validée
-    needs: SecurityGate
-    if: github.ref == 'refs/heads/main'
-
+    needs: SecurityGate  # Ne s'exécute que si la SecurityGate est validée
+    if: github.ref == 'refs/heads/main'  # Seulement sur la branche main
     steps:
-      # ---------------------------------------------------------
-      # Étape 1 : Récupération du code source
-      # ---------------------------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # ---------------------------------------------------------
+    # Étape 1 : Récupération du code source depuis le dépôt
+    # ---------------------------------------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      # ---------------------------------------------------------
-      # Étape 2 : Set up Docker Buildx
-      # ---------------------------------------------------------
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+    # ---------------------------------------------------------
+    # Étape 2 : Mise en place de Docker Buildx
+    # - Permet les builds multi-plateformes et avancés
+    # ---------------------------------------------------------
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
-      # ---------------------------------------------------------
-      # Étape 3 : Build de l’image Docker
-      # - Pas de push (mode audit / local)
-      # - Tag versionné avec github.run_id
-      # ---------------------------------------------------------
-      - name: Build Docker image
-        run: |
-          IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
-          echo "🐳 Building image $IMAGE_TAG"
+    # ---------------------------------------------------------
+    # Étape 3 : Build de l’image Docker
+    # - Tag versionné avec github.run_id pour traçabilité
+    # ---------------------------------------------------------
+    - name: Build Docker image
+      run: |
+        IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
+        echo "🐳 Building image $IMAGE_TAG"
+        docker build -t "$IMAGE_TAG" .
+        echo "✅ Docker image built: $IMAGE_TAG"
 
-          docker build \
-            -t "$IMAGE_TAG" \
-            .
+    # ---------------------------------------------------------
+    # Étape 4 : Vérification de l’image construite
+    # ---------------------------------------------------------
+    - name: List Docker images
+      run: docker images | grep "${{ env.IMAGE_NAME }}"
 
-          echo "✅ Docker image built: $IMAGE_TAG"
+    # ---------------------------------------------------------
+    # Étape 5 : Sauvegarde de l’image Docker en tant qu’artifact
+    # - Nécessaire pour partager l’image entre jobs (Scan/Push)
+    # ---------------------------------------------------------
+    - name: Save Docker image as artifact
+      run: |
+        IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
+        docker save "$IMAGE_TAG" -o image.tar
 
-      # ---------------------------------------------------------
-      # Étape 4 : Vérification de l’image construite
-      # ---------------------------------------------------------
-      - name: List Docker images
-        run: docker images | grep "${{ env.IMAGE_NAME }}"
-  # =============================================================
-  # Job 8 : ImageScan
-  # Objectif :
-  # - Scanner l’image Docker construite
-  # - Détecter les vulnérabilités OS + libs
-  # - Bloquer si CVE CRITICAL
-  # Outil :
-  # - Trivy (image scan)
-  # =============================================================
+    - name: Upload Docker image artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-image
+        path: image.tar
+        retention-days: 1  # Garder 1 jour, suffisant pour pipeline
+
+# ============================================================= 
+# Job 8 : ImageScan 
+# Objectif : 
+# - Scanner l’image Docker construite 
+# - Détecter les vulnérabilités OS + libs 
+# - Bloquer si CVE CRITICAL # Outil : 
+# - Trivy (image scan) 
+# =============================================================
   ImageScan:
     name: Container Image Vulnerability Scan (Trivy)
     runs-on: ubuntu-latest
-
-    needs: ImageBuild
+    needs: ImageBuild  # Nécessite l'image construite
     if: github.ref == 'refs/heads/main'
 
     steps:
       # ---------------------------------------------------------
-      # Étape 1 : Checkout (nécessaire pour cohérence du run)
+      # Étape 1 : Checkout pour cohérence du run
       # ---------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------
-      # Étape 2 : Installation de Trivy
+      # Étape 2 : Installation de Trivy (scanner vulnérabilités)
       # ---------------------------------------------------------
       - name: Install Trivy
         run: |
@@ -745,18 +753,21 @@ jobs:
           trivy --version
 
       # ---------------------------------------------------------
-      # Étape 3 : Rebuild de l’image (runner éphémère)
-      # ⚠️ Chaque job a son propre runner
+      # Étape 3 : Télécharger l’image Docker construite
       # ---------------------------------------------------------
-      - name: Build Docker image (for scan)
-        run: |
-          IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
-          docker build -t "$IMAGE_TAG" .
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Load Docker image
+        run: docker load -i image.tar
 
       # ---------------------------------------------------------
-      # Étape 4 : Scan Trivy Image
-      # - Rapport JSON versionné
-      # - Échec si CRITICAL
+      # Étape 4 : Scan Trivy de l’image Docker
+      # - Détecte les vulnérabilités CRITICAL
+      # - Génère un rapport JSON
+      # - Sortie avec code 1 si CRITICAL → bloque le pipeline
       # ---------------------------------------------------------
       - name: Run Trivy Image Scan
         run: |
@@ -764,17 +775,18 @@ jobs:
           mkdir -p "$REPORT_DIR"
 
           IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
+          echo "🔍 Scanning image: $IMAGE_TAG"
 
           trivy image \
-            --severity CRITICAL \ 
             --scanners vuln \
+            --severity CRITICAL \
             --exit-code 1 \
             --format json \
             --output "$REPORT_DIR/trivy-image-report.json" \
             "$IMAGE_TAG"
 
       # ---------------------------------------------------------
-      # Étape 5 : Affichage lisible des résultats
+      # Étape 5 : Affichage lisible des vulnérabilités dans la console
       # ---------------------------------------------------------
       - name: Display Image Scan Results
         run: |
@@ -811,7 +823,7 @@ jobs:
           EOF
 
       # ---------------------------------------------------------
-      # Étape 6 : Archivage du rapport ImageScan
+      # Étape 6 : Upload du rapport JSON pour audit et corrélation
       # ---------------------------------------------------------
       - name: Upload Image Scan Report
         uses: actions/upload-artifact@v4
@@ -819,3 +831,40 @@ jobs:
           name: trivy-image-report-${{ env.TIMESTAMP }}
           path: reports/image/${{ env.TIMESTAMP }}/trivy-image-report.json
           retention-days: 30
+
+
+  PushImage:
+    name: Push Docker Image to GHCR
+    runs-on: ubuntu-latest
+    needs: ImageScan  # Nécessite que l’image ait été scannée
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      # ---------------------------------------------------------
+      # Étape 1 : Télécharger l’image Docker sauvegardée
+      # ---------------------------------------------------------
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Load Docker image
+        run: docker load -i image.tar
+
+      # ---------------------------------------------------------
+      # Étape 2 : Connexion à GitHub Container Registry
+      # - Utilisation de GITHUB_TOKEN du workflow
+      # ---------------------------------------------------------
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # ---------------------------------------------------------
+      # Étape 3 : Tag et push de l’image sur GHCR
+      # ---------------------------------------------------------
+      - name: Tag & Push image
+        run: |
+          LOCAL_IMAGE="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
+          REMOTE_IMAGE="ghcr.io/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ github.run_id }}"
+
+          docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE"
+          docker push "$REMOTE_IMAGE"
