@@ -852,21 +852,43 @@ jobs:
           path: reports/image/${{ env.TIMESTAMP }}/trivy-image-report.json
           retention-days: 30
 
-  # =============================================================
-  # Job 9 : ImagePush
-  # Objectif :
-  # - Pousser l’image Docker scannée vers un registre
-  # - Utilisation de GitHub Container Registry (GHCR) 
-  # =============================================================
+# =============================================================
+# Job : PushImage
+# Objectif :
+# - Récupérer l’image Docker validée (build + scan OK)
+# - Se connecter à GitHub Container Registry (GHCR)
+# - Tagger l’image avec le SHA du commit
+# - Pousser l’image vers GHCR
+#
+# Best practices :
+# - Utilisation du GITHUB_TOKEN (pas de PAT)
+# - Permissions minimales (packages: write)
+# - Nom du repository en lowercase
+# =============================================================
   PushImage:
     name: Push Docker Image to GHCR
     runs-on: ubuntu-latest
+
+    # -----------------------------------------------------------
+    # Le push ne se fait que si le scan de sécurité a réussi
+    # -----------------------------------------------------------
     needs: ImageScan
+
+    # -----------------------------------------------------------
+    # Push uniquement depuis la branche main
+    # -----------------------------------------------------------
     if: github.ref == 'refs/heads/main'
+
+    # -----------------------------------------------------------
+    # Permissions requises pour publier sur GHCR
+    # -----------------------------------------------------------
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       # ---------------------------------------------------------
-      # Récupération de l’image Docker construite
+      # Téléchargement de l’image Docker depuis les artifacts
       # ---------------------------------------------------------
       - name: Download Docker image artifact
         uses: actions/download-artifact@v4
@@ -874,36 +896,55 @@ jobs:
           name: docker-image
 
       # ---------------------------------------------------------
-      # Chargement de l’image dans Docker
+      # Chargement de l’image Docker dans le daemon Docker
       # ---------------------------------------------------------
       - name: Load Docker image
-        run: docker load -i image.tar
+        run: |
+          docker load -i image.tar
 
       # ---------------------------------------------------------
-      # Login GHCR
+      # Authentification vers GitHub Container Registry
+      # - GITHUB_TOKEN = best practice
+      # - Aucun PAT requis
       # ---------------------------------------------------------
       - name: Login to GHCR
-        run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+            -u "${{ github.actor }}" \
+            --password-stdin
 
       # ---------------------------------------------------------
-      # Normalisation du nom du repo (lowercase obligatoire)
+      # Normalisation du nom du repository (lowercase obligatoire)
       # ---------------------------------------------------------
       - name: Set lowercase repository name
         run: |
           echo "REPO_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       # ---------------------------------------------------------
-      # Tag + Push
-      # ---------------------------------------------------------
-      - name: Tag and push image
+      # Tag & Push de l’image Docker
+      # - Tag immutable basé sur le SHA
+      # - Tag latest pour faciliter les déploiements
+      # -------------------------------------------------------
+      - name: Tag and push Docker image
         run: |
-          LOCAL_IMAGE="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
-          REMOTE_IMAGE="ghcr.io/${REPO_LOWER}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          # Image locale construite précédemment
+          LOCAL_IMAGE="mlapp:${{ github.run_id }}"
+
+          # Image distante GHCR
+          REMOTE_IMAGE="ghcr.io/${REPO_LOWER}/mlapp:${{ github.sha }}"
 
           echo "🚀 Pushing $REMOTE_IMAGE"
 
+          # Tag image locale → GHCR
           docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE"
+
+          # Push vers GHCR
           docker push "$REMOTE_IMAGE"
+
+          # Tag 'latest' (optionnel mais standard)
+          docker tag "$REMOTE_IMAGE" "ghcr.io/${REPO_LOWER}/mlapp:latest"
+          docker push "ghcr.io/${REPO_LOWER}/mlapp:latest"
+
 
 
   # =============================================================
