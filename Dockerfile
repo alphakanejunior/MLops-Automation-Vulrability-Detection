@@ -1,13 +1,13 @@
-FROM python:3.10-slim
+FROM python:3.13-slim
 
 # Créer utilisateur non-root
 RUN useradd -m mluser
 
 WORKDIR /app
 
-# Dépendances
+# Installer les dépendances
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt scikit-learn==1.7.2 joblib==1.5.2 flask pandas  # ajoute toutes les autres dépendances de ton app
 
 # Copier TOUT le projet (dont app.py)
 COPY . .
