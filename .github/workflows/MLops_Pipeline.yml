@@ -999,7 +999,7 @@ jobs:
             echo "🚀 Démarrage du nouveau conteneur"
             docker run -d \
               --name mlapp \
-              -p 8000:5000 \
+              -p 8000:8080 \
               "$IMAGE"
 
 # =============================================================
