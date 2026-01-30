@@ -947,15 +947,15 @@ jobs:
 
 
 
-  # =============================================================
-  # Job 9 : Deploy
-  # Objectif :
-  # - Déployer l’image Docker sur la VM distante
-  # - Stop et suppression de l’ancien conteneur si présent
-  # - Lancement d’un nouveau conteneur exposant le port 8000
-  # Déclenché uniquement sur la branche main
-  # Dépend du job PushImage
-  # =============================================================
+# =============================================================
+# Job 9 : Deploy
+# Objectif :
+# - Déployer l’image Docker sur la VM distante
+# - Stop et suppression de l’ancien conteneur si présent
+# - Lancement d’un nouveau conteneur exposant le port 8000
+# Déclenché uniquement sur la branche main
+# Dépend du job PushImage
+# =============================================================
   Deploy:
     name: Deploy Docker Image to Remote VM
     runs-on: ubuntu-latest
@@ -965,36 +965,51 @@ jobs:
     steps:
       # ---------------------------------------------------------
       # Étape 1 : Déploiement via SSH
-      # - Utilise l'action appleboy/ssh-action
-      # - Variables sensibles stockées dans GitHub Secrets
+      # - Connexion sécurisée à la VM
+      # - Pull image depuis GHCR
+      # - Redémarrage propre du conteneur
       # ---------------------------------------------------------
       - name: SSH deploy container
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.VM_HOST }}          # Adresse IP ou hostname de la VM
+          host: ${{ secrets.VM_HOST }}          # IP ou hostname de la VM
           username: ${{ secrets.VM_USER }}      # Utilisateur SSH
-          key: ${{ secrets.VM_SSH_KEY }}        # Clé privée SSH
+          key: ${{ secrets.VM_SSH_KEY }}        # Clé privée SSH (sans passphrase)
           script: |
-            # Pull de la dernière image construite
-            docker pull ghcr.io/${{ github.repository }}/mlapp:${{ github.sha }}
+            set -e
 
-            # Arrêt du conteneur existant (ignore erreur si absent)
+            echo "🔐 Login to GHCR"
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io \
+              -u "${{ github.actor }}" \
+              --password-stdin
+
+            echo "📦 Normalisation du nom du repository (lowercase)"
+            REPO_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+
+            IMAGE="ghcr.io/${REPO_LOWER}/mlapp:${{ github.sha }}"
+
+            echo "📥 Pull image : $IMAGE"
+            docker pull "$IMAGE"
+
+            echo "🛑 Stop ancien conteneur (si existe)"
             docker stop mlapp || true
 
-            # Suppression du conteneur existant (ignore erreur si absent)
+            echo "🧹 Suppression ancien conteneur (si existe)"
             docker rm mlapp || true
 
-            # Démarrage d’un nouveau conteneur en mode détaché
-            docker run -d --name mlapp -p 8000:8000 \
-              ghcr.io/${{ github.repository }}/mlapp:${{ github.sha }}
+            echo "🚀 Démarrage du nouveau conteneur"
+            docker run -d \
+              --name mlapp \
+              -p 8000:8000 \
+              "$IMAGE"
 
-  # =============================================================
-  # Job 10 : HealthCheck
-  # Objectif :
-  # - Vérifier que le conteneur déployé est opérationnel
-  # - Effectue un curl sur l’endpoint /health de l’application
-  # Dépend du job Deploy
-  # =============================================================
+# =============================================================
+# Job 10 : HealthCheck
+# Objectif :
+# - Vérifier que le conteneur déployé est opérationnel
+# - Effectue un curl sur l’endpoint /health de l’application
+# Dépend du job Deploy
+# =============================================================
   HealthCheck:
     name: Check Deployed Service Health
     runs-on: ubuntu-latest
@@ -1010,7 +1025,8 @@ jobs:
 
       # ---------------------------------------------------------
       # Étape 2 : Vérification de la santé de l’application
-      # - Échec du job si curl retourne une erreur
+      # - Le job échoue si l’endpoint ne répond pas en HTTP 200
       # ---------------------------------------------------------
       - name: Perform Health Check
         run: curl -f http://${{ secrets.VM_HOST }}:8000/health
+
