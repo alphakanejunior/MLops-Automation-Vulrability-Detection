@@ -1,5 +1,5 @@
 # Utiliser Python 3.13 slim comme base
-FROM python:3.13-slim
+FROM python:3.10-slim
 
 # Créer un utilisateur non-root
 RUN useradd -m mluser
@@ -9,12 +9,7 @@ WORKDIR /app
 
 # Copier le fichier requirements.txt et installer les dépendances.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
-    scikit-learn==1.7.2 \
-    joblib==1.5.2 \
-    flask \
-    pandas \
-    numpy
+RUN pip install --no-cache-dir -r requirements.txt 
 
 # Copier tout le projet
 COPY . .
