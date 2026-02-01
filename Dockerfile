@@ -1,31 +1,20 @@
-FROM python:3.13-slim
-
-# Installer les dépendances système pour scikit-learn et pandas
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    gcc \
-    g++ \
-    python3-dev \
-    libblas-dev \
-    liblapack-dev \
-    gfortran \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Utiliser Python 3.13 slim comme base
+FROM python:3.10-slim
 
 # Créer un utilisateur non-root
 RUN useradd -m mluser
 
+# Définir le répertoire de travail
 WORKDIR /app
 
-# Copier requirements.txt et installer les dépendances Python
+# Copier le fichier requirements.txt et installer les dépendances.
 COPY requirements.txt .
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt 
 
 # Copier tout le projet
 COPY . .
 
-# Permissions
+# Définir les permissions
 RUN chown -R mluser:mluser /app
 USER mluser
 
@@ -36,5 +25,5 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl -f http://127.0.0.1:80/ || exit 1
 
-# Lancer l'application Flask
+# Commande pour démarrer l'application
 CMD ["python", "app.py"]
