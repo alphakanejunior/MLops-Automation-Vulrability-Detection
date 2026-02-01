@@ -155,10 +155,9 @@ jobs:
       # ---------------------------------------------------------
       - name: Install Trivy
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget
-          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.68.2_Linux-64bit.deb
-          sudo dpkg -i trivy_0.68.2_Linux-64bit.deb
+          TRIVY_VERSION="0.68.2"
+          wget -q https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb
+          sudo dpkg -i trivy_${TRIVY_VERSION}_Linux-64bit.deb
           trivy --version
 
       # ---------------------------------------------------------
