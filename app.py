@@ -4,7 +4,7 @@ import joblib
 app = Flask(__name__)
 
 # Charger le modèle et le vectorizer
-model = joblib.load("model/spam_model.pkl")
+model = joblib.load("model/spam_model_cp.pkl")
 vectorizer = joblib.load("model/vectorizer.pkl")
 
 

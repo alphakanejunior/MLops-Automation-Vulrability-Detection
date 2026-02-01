@@ -1,5 +1,5 @@
 # Utiliser Python 3.13 slim comme base
-FROM python:3.10-slim
+FROM python:3.13-slim
 
 # Créer un utilisateur non-root
 RUN useradd -m mluser
@@ -7,9 +7,9 @@ RUN useradd -m mluser
 # Définir le répertoire de travail
 WORKDIR /app
 
-# Copier le fichier requirements.txt et installer les dépendances.
+# Copier requirements.txt et installer les dépendances
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt 
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copier tout le projet
 COPY . .
