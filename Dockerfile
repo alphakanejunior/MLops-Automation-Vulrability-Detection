@@ -7,7 +7,7 @@ RUN useradd -m mluser
 # Définir le répertoire de travail
 WORKDIR /app
 
-# Copier le fichier requirements.txt et installer les dépendances
+# Copier le fichier requirements.txt et installer les dépendances.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     scikit-learn==1.7.2 \
