@@ -281,7 +281,7 @@ jobs:
           mkdir -p "$(dirname "$REPORT_TXT")"
 
           # Exécution de ModelScan et sauvegarde du rapport texte
-          modelscan scan -p model/model/ | tee "$REPORT_TXT"
+          modelscan scan -p model/ | tee "$REPORT_TXT"
 
           # Export des chemins pour le script Python
           export REPORT_TXT
