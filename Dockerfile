@@ -1,5 +1,5 @@
 # Utiliser Python 3.13 slim comme base
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 # Créer un utilisateur non-root
 RUN useradd -m mluser
@@ -18,12 +18,12 @@ COPY . .
 RUN chown -R mluser:mluser /app
 USER mluser
 
-# Exposer le port 80
-EXPOSE 80
+# Exposer le port 5000 pour l'application Flask
+EXPOSE 5000
 
-# Healthcheck sur le port 80
+# Healthcheck sur le port 5000
 HEALTHCHECK --interval=30s --timeout=3s \
-  CMD curl -f http://127.0.0.1:80/ || exit 1
-
+  CMD curl -f http://127.0.0.1:5000/ || exit 1
+ 
 # Commande pour démarrer l'application
 CMD ["python", "app.py"]

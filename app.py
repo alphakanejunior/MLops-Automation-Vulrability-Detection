@@ -4,7 +4,7 @@ import joblib
 app = Flask(__name__)
 
 # Charger le modèle et le vectorizer
-model = joblib.load("model/spam_model_cp.pkl")
+model = joblib.load("model/spam_model.pkl")
 vectorizer = joblib.load("model/vectorizer.pkl")
 
 
@@ -39,4 +39,4 @@ def predict_front():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=80)
+    app.run(host="0.0.0.0", port=5000)

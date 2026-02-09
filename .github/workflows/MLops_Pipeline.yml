@@ -1026,5 +1026,5 @@ jobs:
       # - Le job échoue si l’endpoint ne répond pas en HTTP 200
       # ---------------------------------------------------------
       - name: Perform Health Check
-        run: curl -f http://${{ secrets.VM_HOST }}:8000/health
+        run: curl -f http://${{ secrets.VM_HOST }}:80/health
 
