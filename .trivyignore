@@ -1,0 +1,10 @@
+# OS packages (Ubuntu)
+pkg:linux-libc-dev
+pkg:libtasn1-6
+
+# Ruby / Go stdlib embarquées
+pkg:stdlib
+
+# Ruby gems
+pkg:rexml
+pkg:httparty
