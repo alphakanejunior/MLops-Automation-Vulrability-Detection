@@ -752,3 +752,30 @@ jobs:
               mlapp:latest
 
             echo "✅ Déploiement terminé avec succès"
+
+# =============================================================
+# Job 10 : HealthCheck
+# Objectif :
+# - Vérifier que le conteneur déployé est opérationnel
+# - Effectue un curl sur l’endpoint /health de l’application
+# Dépend du job Deploy
+# =============================================================
+  HealthCheck:
+    name: Check Deployed Service Health
+    runs-on: ubuntu-latest
+    needs: DeployOnVM
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      # ---------------------------------------------------------
+      # Étape 1 : Pause pour laisser le conteneur démarrer
+      # ---------------------------------------------------------
+      - name: Wait for container to start
+        run: sleep 15
+
+      # ---------------------------------------------------------
+      # Étape 2 : Vérification de la santé de l’application
+      # - Le job échoue si l’endpoint ne répond pas en HTTP 200
+      # ---------------------------------------------------------
+      - name: Perform Health Check
+        run: curl -f http://${{ secrets.VM_HOST }}:80/health
