@@ -733,7 +733,7 @@ jobs:
             # - Garantit compatibilité Python / joblib / sklearn
             # ---------------------------------------------------
             echo "🧠 Entraînement du modèle ML"
-            python train_model.py
+            python3 train_model.py
 
             # ---------------------------------------------------
             # Étape 3 : Build de l’image Docker sur la VM
