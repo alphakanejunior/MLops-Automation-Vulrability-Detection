@@ -726,15 +726,9 @@ jobs:
             echo "🔄 Mise à jour du code (git pull)"
             git pull origin main
 
+           
             # ---------------------------------------------------
-            # Étape 2 : Activation de l’environnement virtuel Python
-            # - Utilisé pour l’entraînement du modèle ML
-            # ---------------------------------------------------
-            echo "🐍 Activation du virtualenv"
-            source venv/bin/activate
-
-            # ---------------------------------------------------
-            # Étape 3 : Entraînement du modèle ML sur la VM
+            # Étape 2 : Entraînement du modèle ML sur la VM
             # - Génère model/spam_model.pkl et vectorizer.pkl
             # - Garantit compatibilité Python / joblib / sklearn
             # ---------------------------------------------------
@@ -742,14 +736,14 @@ jobs:
             python train_model.py
 
             # ---------------------------------------------------
-            # Étape 4 : Build de l’image Docker sur la VM
+            # Étape 3 : Build de l’image Docker sur la VM
             # - Le modèle entraîné est inclus dans l’image
             # ---------------------------------------------------
             echo "🐳 Build Docker image localement sur la VM"
             docker build -t mlapp:latest .
 
             # ---------------------------------------------------
-            # Étape 5 : Arrêt et suppression de l’ancien conteneur
+            # Étape 4 : Arrêt et suppression de l’ancien conteneur
             # - Tolérant si le conteneur n’existe pas
             # ---------------------------------------------------
             echo "🛑 Arrêt de l’ancien conteneur (si présent)"
@@ -757,7 +751,7 @@ jobs:
             docker rm mlapp || true
 
             # ---------------------------------------------------
-            # Étape 6 : Lancement du nouveau conteneur
+            # Étape 5 : Lancement du nouveau conteneur
             # - Expose le port 80 de la VM
             # ---------------------------------------------------
             echo "🚀 Démarrage du nouveau conteneur"
