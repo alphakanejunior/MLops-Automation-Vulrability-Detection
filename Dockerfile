@@ -11,6 +11,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt 
 
+# Entraîner le modèle (créera le fichier model.pkl ou similaire)
+RUN python train_model.py
 # Copier tout le projet
 COPY . .
 

@@ -726,15 +726,6 @@ jobs:
             echo "🔄 Mise à jour du code (git pull)"
             git pull origin main
 
-           
-            # ---------------------------------------------------
-            # Étape 2 : Entraînement du modèle ML sur la VM
-            # - Génère model/spam_model.pkl et vectorizer.pkl
-            # - Garantit compatibilité Python / joblib / sklearn
-            # ---------------------------------------------------
-            echo "🧠 Entraînement du modèle ML"
-            python3 main.py
-
             # ---------------------------------------------------
             # Étape 3 : Build de l’image Docker sur la VM
             # - Le modèle entraîné est inclus dans l’image
