@@ -676,88 +676,74 @@ jobs:
   # =============================================================
   # Job : DeployOnVM
   # Objectif :
-  # - Effectuer le build et le déploiement directement sur la VM Azure
-  # - Garantir la compatibilité du modèle ML (pickle, joblib, sklearn)
-  # - Éviter les problèmes de sérialisation entre environnements
-  # - Déployer uniquement après validation complète de la sécurité
+  # - Déployer l’application sur la VM Azure
+  # - Mettre à jour le code depuis la branche main
+  # - Builder l’image Docker sur la VM
+  # - Redémarrer le conteneur applicatif
+  #
+  # IMPORTANT :
+  # - Aucun entraînement de modèle ML dans ce job
+  # - Le job se limite strictement au déploiement
   # =============================================================
   DeployOnVM:
     name: Build & Deploy on Azure VM
-
-    # Environnement d’exécution du job GitHub Actions
     runs-on: ubuntu-latest
-
-    # Dépendance :
-    # - Ce job ne s'exécute que si la SecurityGate est validée
     needs: SecurityGate
-
-    # Condition :
-    # - Déploiement autorisé uniquement sur la branche main
     if: github.ref == 'refs/heads/main'
 
     steps:
       # ---------------------------------------------------------
-      # Étape unique : Déploiement distant via SSH
-      # - Connexion sécurisée à la VM Azure
-      # - Exécution des commandes directement sur l’hôte cible
+      # Connexion SSH à la VM Azure
       # ---------------------------------------------------------
       - name: Deploy via SSH on Azure VM
         uses: appleboy/ssh-action@v1
         with:
-          # Hôte distant (IP ou DNS de la VM Azure)
-          host: ${{ secrets.VM_HOST }}
-
-          # Utilisateur SSH de la VM
-          username: ${{ secrets.VM_USER }}
-
-          # Clé privée SSH (sans passphrase)
-          key: ${{ secrets.VM_SSH_KEY }}
-
-          # Script exécuté sur la VM distante
+          host: ${{ secrets.VM_HOST }}        # IP publique ou DNS de la VM
+          username: ${{ secrets.VM_USER }}    # Utilisateur SSH
+          key: ${{ secrets.VM_SSH_KEY }}      # Clé privée SSH
           script: |
-            # Arrêt immédiat du script en cas d’erreur critique
-            set -e
+            set -e  # Arrêt immédiat si une commande échoue
 
-            # -----------------------------------------------------
-            # Mise à jour du code source depuis le dépôt Git
-            # -----------------------------------------------------
-            echo "📥 Mise à jour du code"
-            cd ~/MLops-Automation-Vulrability-Detection
+            echo "📁 Accès au HOME utilisateur"
+            cd ~
+
+            # ---------------------------------------------------
+            # Étape 1 : Vérification du dépôt sur la VM
+            # - Clone si inexistant (premier déploiement)
+            # - Pull sinon
+            # ---------------------------------------------------
+            if [ ! -d "MLops-Automation-Vulrability-Detection" ]; then
+              echo "📥 Clone initial du dépôt"
+              git clone https://github.com/${{ github.repository }}.git \
+                MLops-Automation-Vulrability-Detection
+            fi
+
+            echo "📂 Accès au dépôt"
+            cd MLops-Automation-Vulrability-Detection
+
+            echo "🔄 Mise à jour du code"
             git pull origin main
 
-            # -----------------------------------------------------
-            # Entraînement du modèle ML sur la VM cible
-            # - Garantit la compatibilité du modèle sérialisé
-            # - Évite les erreurs de désérialisation (pickle/joblib)
-            # -----------------------------------------------------
-            echo "🐍 Entraînement du modèle sur la VM"
-            source venv/bin/activate
-            python train_model.py
-
-            # -----------------------------------------------------
-            # Construction de l’image Docker localement sur la VM
-            # - Le modèle généré est inclus dans l’image
-            # - Assure la reproductibilité de l’environnement
-            # -----------------------------------------------------
-            echo "🐳 Build Docker sur la VM"
+            # ---------------------------------------------------
+            # Étape 2 : Build de l’image Docker sur la VM
+            # ---------------------------------------------------
+            echo "🐳 Build de l’image Docker"
             docker build -t mlapp:latest .
 
-            # -----------------------------------------------------
-            # Arrêt et suppression de l’ancien conteneur (si existant)
-            # - Évite les conflits de ports ou de conteneurs
-            # - "|| true" empêche l’échec si le conteneur n’existe pas
-            # -----------------------------------------------------
-            echo "🛑 Stop ancien conteneur"
+            # ---------------------------------------------------
+            # Étape 3 : Arrêt de l’ancien conteneur
+            # ---------------------------------------------------
+            echo "🛑 Arrêt du conteneur existant (si présent)"
             docker stop mlapp || true
             docker rm mlapp || true
 
-            # -----------------------------------------------------
-            # Lancement du nouveau conteneur Docker
-            # - Exposition du service sur le port 80
-            # - Conteneur nommé pour faciliter la maintenance
-            # -----------------------------------------------------
+            # ---------------------------------------------------
+            # Étape 4 : Lancement du nouveau conteneur
+            # ---------------------------------------------------
             echo "🚀 Lancement du conteneur"
             docker run -d \
               --name mlapp \
               -p 80:80 \
               mlapp:latest
+
+            echo "✅ Déploiement terminé sans entraînement ML"
