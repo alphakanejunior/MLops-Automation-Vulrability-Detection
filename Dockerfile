@@ -11,6 +11,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt 
 
+# Copier le modèle et le vectorizer
+COPY model/ model/
+
 # Copier tout le projet
 COPY . .
 
