@@ -672,13 +672,12 @@ jobs:
 
           print("✅ CVE gate passed")
           EOF
-  # =============================================================
-  # Job 7 : ImageBuild
-  # Objectif :
-  # - Construire l’image Docker de l’application ML
-  # - Seulement si la SecurityGate est validée
-  # - Image taggée avec le run GitHub (traçabilité)
-  # =============================================================ImageBuild:
+# =============================================================
+# Job 7 : ImageBuild
+# Objectif :
+# - Générer le modèle ML si nécessaire
+# - Construire l’image Docker de l’application ML avec le modèle à jour
+# =============================================================
   ImageBuild:
     name: Build Docker Image
     runs-on: ubuntu-latest
@@ -693,15 +692,31 @@ jobs:
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------
-      # Étape 2 : Mise en place de Docker Buildx
-      # - Permet les builds multi-plateformes et avancés
+      # Étape 2 : Installer Python pour entraîner le modèle
       # ---------------------------------------------------------
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       # ---------------------------------------------------------
-      # Étape 3 : Build de l’image Docker
-      # - Tag versionné avec github.run_id pour traçabilité
+      # Étape 3 : Installer les dépendances Python nécessaires
+      # ---------------------------------------------------------
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ---------------------------------------------------------
+      # Étape 4 : Générer/mettre à jour le modèle ML
+      # ---------------------------------------------------------
+      - name: Train / Build Model
+        run: |
+          python train_model.py  # ton script qui crée model/spam_model.pkl
+          ls -la model/          # vérifier que le modèle existe
+
+      # ---------------------------------------------------------
+      # Étape 5 : Build de l’image Docker avec le modèle à jour
       # ---------------------------------------------------------
       - name: Build Docker image
         run: |
@@ -711,14 +726,13 @@ jobs:
           echo "✅ Docker image built: $IMAGE_TAG"
 
       # ---------------------------------------------------------
-      # Étape 4 : Vérification de l’image construite
+      # Étape 6 : Vérification de l’image construite
       # ---------------------------------------------------------
       - name: List Docker images
         run: docker images | grep "${{ env.IMAGE_NAME }}"
 
       # ---------------------------------------------------------
-      # Étape 5 : Sauvegarde de l’image Docker en tant qu’artifact
-      # - Nécessaire pour partager l’image entre jobs (Scan/Push)
+      # Étape 7 : Sauvegarde de l’image Docker en tant qu’artifact
       # ---------------------------------------------------------
       - name: Save Docker image as artifact
         run: |
@@ -730,10 +744,7 @@ jobs:
         with:
           name: docker-image
           path: image.tar
-          retention-days: 1  # Garder 1 jour, suffisant pour pipeline
-
-
-
+          retention-days: 1
 
 # =============================================================
 # Job 8 : ImageScan
