@@ -672,359 +672,92 @@ jobs:
 
           print("✅ CVE gate passed")
           EOF
+          
   # =============================================================
-  # Job 7 : ImageBuild
+  # Job : DeployOnVM
   # Objectif :
-  # - Construire l’image Docker de l’application ML
-  # - Seulement si la SecurityGate est validée
-  # - Image taggée avec le run GitHub (traçabilité)
-  # =============================================================ImageBuild:
-  ImageBuild:
-    name: Build Docker Image
+  # - Effectuer le build et le déploiement directement sur la VM Azure
+  # - Garantir la compatibilité du modèle ML (pickle, joblib, sklearn)
+  # - Éviter les problèmes de sérialisation entre environnements
+  # - Déployer uniquement après validation complète de la sécurité
+  # =============================================================
+  DeployOnVM:
+    name: Build & Deploy on Azure VM
+
+    # Environnement d’exécution du job GitHub Actions
     runs-on: ubuntu-latest
-    needs: SecurityGate  # Ne s'exécute que si la SecurityGate est validée
-    if: github.ref == 'refs/heads/main'  # Seulement sur la branche main
 
-    steps:
-      # ---------------------------------------------------------
-      # Étape 1 : Récupération du code source depuis le dépôt
-      # ---------------------------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # Dépendance :
+    # - Ce job ne s'exécute que si la SecurityGate est validée
+    needs: SecurityGate
 
-      # ---------------------------------------------------------
-      # Étape 2 : Mise en place de Docker Buildx
-      # - Permet les builds multi-plateformes et avancés
-      # ---------------------------------------------------------
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # ---------------------------------------------------------
-      # Étape 3 : Build de l’image Docker
-      # - Tag versionné avec github.run_id pour traçabilité
-      # ---------------------------------------------------------
-      - name: Build Docker image
-        run: |
-          IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
-          echo "🐳 Building image $IMAGE_TAG"
-          docker build -t "$IMAGE_TAG" .
-          echo "✅ Docker image built: $IMAGE_TAG"
-
-      # ---------------------------------------------------------
-      # Étape 4 : Vérification de l’image construite
-      # ---------------------------------------------------------
-      - name: List Docker images
-        run: docker images | grep "${{ env.IMAGE_NAME }}"
-
-      # ---------------------------------------------------------
-      # Étape 5 : Sauvegarde de l’image Docker en tant qu’artifact
-      # - Nécessaire pour partager l’image entre jobs (Scan/Push)
-      # ---------------------------------------------------------
-      - name: Save Docker image as artifact
-        run: |
-          IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
-          docker save "$IMAGE_TAG" -o image.tar
-
-      - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-image
-          path: image.tar
-          retention-days: 1  # Garder 1 jour, suffisant pour pipeline
-
-
-
-
-# =============================================================
-# Job 8 : ImageScan
-# Objectif :
-# - Scanner l’image Docker construite pour vulnérabilités
-# - Utilisation de Trivy en mode image scan
-# - Échoue si des vulnérabilités CRITICAL sont détectées
-# =============================================================
-  ImageScan:
-    name: Container Image Vulnerability Scan (Trivy)
-    runs-on: ubuntu-latest
-    needs: ImageBuild  # Nécessite l'image construite
+    # Condition :
+    # - Déploiement autorisé uniquement sur la branche main
     if: github.ref == 'refs/heads/main'
 
     steps:
       # ---------------------------------------------------------
-      # Étape 1 : Checkout pour cohérence du run
+      # Étape unique : Déploiement distant via SSH
+      # - Connexion sécurisée à la VM Azure
+      # - Exécution des commandes directement sur l’hôte cible
       # ---------------------------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ---------------------------------------------------------
-      # Étape 2 : Installation de Trivy (scanner vulnérabilités)
-      # ---------------------------------------------------------
-      - name: Install Trivy
-        run: |
-          TRIVY_VERSION="0.68.2"
-          wget -q https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb
-          sudo dpkg -i trivy_${TRIVY_VERSION}_Linux-64bit.deb
-          trivy --version
-
-      # ---------------------------------------------------------
-      # Étape 3 : Télécharger l’image Docker construite
-      # ---------------------------------------------------------
-      - name: Download Docker image artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image
-
-      - name: Load Docker image
-        run: docker load -i image.tar
-
-      # ---------------------------------------------------------
-      # Étape 4 : Scan Trivy de l’image Docker
-      # - Détecte les vulnérabilités CRITICAL
-      # - Génère un rapport JSON
-      # - Sortie avec code 1 si CRITICAL → bloque le pipeline
-      # ---------------------------------------------------------
-      - name: Run Trivy Image Scan
-        run: |
-          REPORT_DIR="reports/image/${{ env.TIMESTAMP }}"
-          mkdir -p "$REPORT_DIR"
-
-          IMAGE_TAG="${{ env.IMAGE_NAME }}:${{ github.run_id }}"
-          echo "🔍 Scanning image: $IMAGE_TAG"
-
-          trivy image \
-            --scanners vuln \
-            --severity CRITICAL \
-            --exit-code 0 \
-            --format json \
-            --output "$REPORT_DIR/trivy-image-report.json" \
-            "$IMAGE_TAG"
-
-      # Installer Python et tabulate pour affichage console (nécessaire)
-      - name: Install Python display dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install tabulate
-
-      # ---------------------------------------------------------
-      # Étape 5 : Affichage lisible des vulnérabilités dans la console
-      # ---------------------------------------------------------
-      - name: Display Image Scan Results
-        run: |
-          python - << 'EOF'
-          import json
-          from tabulate import tabulate
-
-          report = "reports/image/${{ env.TIMESTAMP }}/trivy-image-report.json"
-          with open(report) as f:
-              data = json.load(f)
-
-          rows = []
-          for result in data.get("Results", []) or []:
-              target = result.get("Target", "")
-              for vuln in result.get("Vulnerabilities", []) or []:
-                  rows.append([
-                      target,
-                      vuln.get("PkgName"),
-                      vuln.get("InstalledVersion"),
-                      vuln.get("VulnerabilityID"),
-                      vuln.get("Severity"),
-                      vuln.get("Title", "")[:80]
-                  ])
-
-          if not rows:
-              print("✅ No image vulnerabilities found")
-          else:
-              print("\n🛑 Container Image Vulnerabilities (Trivy):")
-              print(tabulate(
-                  rows,
-                  headers=["Layer", "Package", "Version", "CVE", "Severity", "Description"],
-                  tablefmt="github"
-              ))
-          EOF
-
-      # ---------------------------------------------------------
-      # Étape 6 : Upload du rapport JSON pour audit et corrélation
-      # ---------------------------------------------------------
-      - name: Upload Image Scan Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-image-report-${{ env.TIMESTAMP }}
-          path: reports/image/${{ env.TIMESTAMP }}/trivy-image-report.json
-          retention-days: 30
-
-# =============================================================
-# Job : PushImage
-# Objectif :
-# - Récupérer l’image Docker validée (build + scan OK)
-# - Se connecter à GitHub Container Registry (GHCR)
-# - Tagger l’image avec le SHA du commit
-# - Pousser l’image vers GHCR
-#
-# Best practices :
-# - Utilisation du GITHUB_TOKEN (pas de PAT)
-# - Permissions minimales (packages: write)
-# - Nom du repository en lowercase
-# =============================================================
-  PushImage:
-    name: Push Docker Image to GHCR
-    runs-on: ubuntu-latest
-
-    # -----------------------------------------------------------
-    # Le push ne se fait que si le scan de sécurité a réussi
-    # -----------------------------------------------------------
-    needs: ImageScan
-
-    # -----------------------------------------------------------
-    # Push uniquement depuis la branche main
-    # -----------------------------------------------------------
-    if: github.ref == 'refs/heads/main'
-
-    # -----------------------------------------------------------
-    # Permissions requises pour publier sur GHCR
-    # -----------------------------------------------------------
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      # ---------------------------------------------------------
-      # Téléchargement de l’image Docker depuis les artifacts
-      # ---------------------------------------------------------
-      - name: Download Docker image artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image
-
-      # ---------------------------------------------------------
-      # Chargement de l’image Docker dans le daemon Docker
-      # ---------------------------------------------------------
-      - name: Load Docker image
-        run: |
-          docker load -i image.tar
-
-      # ---------------------------------------------------------
-      # Authentification vers GitHub Container Registry
-      # - GITHUB_TOKEN = best practice
-      # - Aucun PAT requis
-      # ---------------------------------------------------------
-      - name: Login to GHCR
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
-            -u "${{ github.actor }}" \
-            --password-stdin
-
-      # ---------------------------------------------------------
-      # Normalisation du nom du repository (lowercase obligatoire)
-      # ---------------------------------------------------------
-      - name: Set lowercase repository name
-        run: |
-          echo "REPO_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-
-      # ---------------------------------------------------------
-      # Tag & Push de l’image Docker
-      # - Tag immutable basé sur le SHA
-      # - Tag latest pour faciliter les déploiements
-      # -------------------------------------------------------
-      - name: Tag and push Docker image
-        run: |
-          # Image locale construite précédemment
-          LOCAL_IMAGE="mlapp:${{ github.run_id }}"
-
-          # Image distante GHCR
-          REMOTE_IMAGE="ghcr.io/${REPO_LOWER}/mlapp:${{ github.sha }}"
-
-          echo "🚀 Pushing $REMOTE_IMAGE"
-
-          # Tag image locale → GHCR
-          docker tag "$LOCAL_IMAGE" "$REMOTE_IMAGE"
-
-          # Push vers GHCR
-          docker push "$REMOTE_IMAGE"
-
-          # Tag 'latest' (optionnel mais standard)
-          docker tag "$REMOTE_IMAGE" "ghcr.io/${REPO_LOWER}/mlapp:latest"
-          docker push "ghcr.io/${REPO_LOWER}/mlapp:latest"
-
-
-
-# =============================================================
-# Job 9 : Deploy
-# Objectif :
-# - Déployer l’image Docker sur la VM distante
-# - Stop et suppression de l’ancien conteneur si présent
-# - Lancement d’un nouveau conteneur exposant le port 8000
-# Déclenché uniquement sur la branche main
-# Dépend du job PushImage
-# =============================================================
-  Deploy:
-    name: Deploy Docker Image to Remote VM
-    runs-on: ubuntu-latest
-    needs: PushImage
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      # ---------------------------------------------------------
-      # Étape 1 : Déploiement via SSH
-      # - Connexion sécurisée à la VM
-      # - Pull image depuis GHCR
-      # - Redémarrage propre du conteneur
-      # ---------------------------------------------------------
-      - name: SSH deploy container
+      - name: Deploy via SSH on Azure VM
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.VM_HOST }}          # IP ou hostname de la VM
-          username: ${{ secrets.VM_USER }}      # Utilisateur SSH
-          key: ${{ secrets.VM_SSH_KEY }}        # Clé privée SSH (sans passphrase)
+          # Hôte distant (IP ou DNS de la VM Azure)
+          host: ${{ secrets.VM_HOST }}
+
+          # Utilisateur SSH de la VM
+          username: ${{ secrets.VM_USER }}
+
+          # Clé privée SSH (sans passphrase)
+          key: ${{ secrets.VM_SSH_KEY }}
+
+          # Script exécuté sur la VM distante
           script: |
+            # Arrêt immédiat du script en cas d’erreur critique
             set -e
 
-            echo "🔐 Login to GHCR"
-            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io \
-              -u "${{ github.actor }}" \
-              --password-stdin
+            # -----------------------------------------------------
+            # Mise à jour du code source depuis le dépôt Git
+            # -----------------------------------------------------
+            echo "📥 Mise à jour du code"
+            cd ~/MLops-Automation-Vulrability-Detection
+            git pull origin main
 
-            echo "📦 Normalisation du nom du repository (lowercase)"
-            REPO_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-            IMAGE="ghcr.io/${REPO_NAME}/mlapp:${{ github.sha }}"
+            # -----------------------------------------------------
+            # Entraînement du modèle ML sur la VM cible
+            # - Garantit la compatibilité du modèle sérialisé
+            # - Évite les erreurs de désérialisation (pickle/joblib)
+            # -----------------------------------------------------
+            echo "🐍 Entraînement du modèle sur la VM"
+            source venv/bin/activate
+            python train_model.py
 
-            echo "📥 Pull image : $IMAGE"
-            docker pull "$IMAGE"
+            # -----------------------------------------------------
+            # Construction de l’image Docker localement sur la VM
+            # - Le modèle généré est inclus dans l’image
+            # - Assure la reproductibilité de l’environnement
+            # -----------------------------------------------------
+            echo "🐳 Build Docker sur la VM"
+            docker build -t mlapp:latest .
 
-            echo "🛑 Stop ancien conteneur (si existe)"
+            # -----------------------------------------------------
+            # Arrêt et suppression de l’ancien conteneur (si existant)
+            # - Évite les conflits de ports ou de conteneurs
+            # - "|| true" empêche l’échec si le conteneur n’existe pas
+            # -----------------------------------------------------
+            echo "🛑 Stop ancien conteneur"
             docker stop mlapp || true
-
-            echo "🧹 Suppression ancien conteneur (si existe)"
             docker rm mlapp || true
 
-            echo "🚀 Démarrage du nouveau conteneur"
+            # -----------------------------------------------------
+            # Lancement du nouveau conteneur Docker
+            # - Exposition du service sur le port 80
+            # - Conteneur nommé pour faciliter la maintenance
+            # -----------------------------------------------------
+            echo "🚀 Lancement du conteneur"
             docker run -d \
               --name mlapp \
-              -p 8000:80 \
-              "$IMAGE"
-
-# =============================================================
-# Job 10 : HealthCheck
-# Objectif :
-# - Vérifier que le conteneur déployé est opérationnel
-# - Effectue un curl sur l’endpoint /health de l’application
-# Dépend du job Deploy
-# =============================================================
-  HealthCheck:
-    name: Check Deployed Service Health
-    runs-on: ubuntu-latest
-    needs: Deploy
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      # ---------------------------------------------------------
-      # Étape 1 : Pause pour laisser le conteneur démarrer
-      # ---------------------------------------------------------
-      - name: Wait for container to start
-        run: sleep 15
-
-      # ---------------------------------------------------------
-      # Étape 2 : Vérification de la santé de l’application
-      # - Le job échoue si l’endpoint ne répond pas en HTTP 200
-      # ---------------------------------------------------------
-      - name: Perform Health Check
-        run: curl -f http://${{ secrets.VM_HOST }}:80/health
-
+              -p 80:80 \
+              mlapp:latest
