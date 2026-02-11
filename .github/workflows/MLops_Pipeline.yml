@@ -775,7 +775,7 @@ jobs:
 
       # ---------------------------------------------------------
       # Étape 2 : Vérification de la santé de l’application
-      # - Le job échoue si l’endpoint ne répond pas en HTTP 200
+      # - Le job échoue si l’endpoint ne répond pas en HTTP 200 hh/
       # ---------------------------------------------------------
       - name: Perform Health Check
         run: curl -f http://${{ secrets.VM_HOST }}:80/health
