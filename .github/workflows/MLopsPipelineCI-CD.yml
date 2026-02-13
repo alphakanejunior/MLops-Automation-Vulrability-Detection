@@ -243,139 +243,111 @@ jobs:
   # Outil :
   # - ModelScan
   # =============================================================
+      
   ModelScan:
-    name: Model Serialization Security Scan
-    runs-on: [self-hosted, Linux, X64]
-    # Ce job démarre après l’analyse des dépendances
-    needs: DependencyScan
+      name: Model Serialization Security Scan
+      runs-on: [self-hosted, Linux, X64]
+      needs: DependencyScan
 
-    steps:
-      # ---------------------------------------------------------
-      # Étape 1 : Récupération du dépôt Git
-      # ---------------------------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      steps:
+        - name: Checkout repository
+          uses: actions/checkout@v4
 
-      # ---------------------------------------------------------
-      # Étape 2 : Installation de ModelScan
-      # ---------------------------------------------------------
-      - name: Install ModelScan
-        run: |
-          python -m pip install --upgrade pip
-          pip install modelscan==0.8.7
+        # ---------------------------------------------------------
+        # Étape 2 : Création d'un venv pour isoler l'installation Python
+        # ---------------------------------------------------------
+        - name: Setup Python venv
+          run: |
+            python3 -m venv .venv
+            . .venv/bin/activate
+            .venv/bin/pip install --upgrade pip
+            .venv/bin/pip install modelscan==0.8.7
 
-      # ---------------------------------------------------------
-      # Étape 3 : Création du dossier des rapports ModelScan
-      # ---------------------------------------------------------
-      - name: Create Reports Folder
-        run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
+        # ---------------------------------------------------------
+        # Étape 3 : Création du dossier des rapports ModelScan
+        # ---------------------------------------------------------
+        - name: Create Reports Folder
+          run: mkdir -p "reports/models/${{ env.TIMESTAMP }}/official"
 
-      # ---------------------------------------------------------
-      # Étape 4 : Scan des modèles ML
-      # - Génération d’un rapport texte natif
-      # - Conversion du rapport TXT vers un JSON structuré
-      # ---------------------------------------------------------
-      - name: Run ModelScan and generate JSON compatible CVEEnrichment
-        run: |
-          REPORT_TXT="reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt"
-          REPORT_JSON="reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json"
+        # ---------------------------------------------------------
+        # Étape 4 : Scan des modèles ML + génération JSON
+        # ---------------------------------------------------------
+        - name: Run ModelScan and generate JSON compatible CVEEnrichment
+          run: |
+            REPORT_TXT="reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.txt"
+            REPORT_JSON="reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json"
 
-          mkdir -p "$(dirname "$REPORT_TXT")"
+            mkdir -p "$(dirname "$REPORT_TXT")"
 
-          # Exécution de ModelScan et sauvegarde du rapport texte
-          modelscan scan -p ModelApp/model/ | tee "$REPORT_TXT"
+            # Scan ModelScan
+            .venv/bin/modelscan scan -p ModelApp/model/ | tee "$REPORT_TXT"
 
-          # Export des chemins pour le script Python
-          export REPORT_TXT
-          export REPORT_JSON
+            # Conversion TXT -> JSON structuré
+            .venv/bin/python3 - << 'PYTHON_CODE'
+            import json
+            import os
+            import re
 
-          # Conversion TXT -> JSON structuré
-          python - << EOF
-          import json
-          import os
-          import re
+            txt_file = os.environ["REPORT_TXT"]
+            json_file = os.environ["REPORT_JSON"]
 
-          # Chemins des fichiers
-          txt_file = os.environ["REPORT_TXT"]
-          json_file = os.environ["REPORT_JSON"]
+            vulnerabilities = []
+            current_severity = None
+            current_description = None
+            current_source = None
+            inside_issues = False
 
-          vulnerabilities = []
-          current_severity = None
-          current_description = None
-          current_source = None
-          inside_issues = False
+            with open(txt_file, "r") as f:
+                lines = f.readlines()
 
-          # Lecture du fichier texte généré par ModelScan
-          with open(txt_file, "r") as f:
-              lines = f.readlines()
+            for line in lines:
+                line = line.strip()
+                if line == "--- Issues by Severity ---":
+                    inside_issues = True
+                    continue
+                if line.startswith("--- Errors ---") or line.startswith("--- Skipped ---"):
+                    break
+                if not inside_issues:
+                    continue
+                sev_match = re.match(r'--- (LOW|MEDIUM|HIGH|CRITICAL) ---', line)
+                if sev_match:
+                    current_severity = sev_match.group(1)
+                    continue
+                if line.startswith("- Description:"):
+                    current_description = line.replace("- Description:", "").strip()
+                    continue
+                if line.startswith("- Source:"):
+                    current_source = line.replace("- Source:", "").strip()
+                    vulnerabilities.append({
+                        "id": f"modelscan-{hash(current_source + current_description)}",
+                        "cve": f"modelscan-{hash(current_source + current_description)}",
+                        "file": current_source,
+                        "description": current_description,
+                        "severity": current_severity,
+                        "tool": "ModelScan"
+                    })
+                    current_description = None
+                    current_source = None
+            output = {
+                "summary": {"total_vulnerabilities": len(vulnerabilities)},
+                "vulnerabilities": vulnerabilities
+            }
 
-          for line in lines:
-              line = line.strip()
+            with open(json_file, "w") as f:
+                json.dump(output, f, indent=2)
 
-              # Début de la section réelle des vulnérabilités
-              if line == "--- Issues by Severity ---":
-                  inside_issues = True
-                  continue
+            print(f"✅ ModelScan JSON réel généré : {json_file}")
+            PYTHON_CODE
 
-              # Fin de la section vulnérabilités
-              if line.startswith("--- Errors ---") or line.startswith("--- Skipped ---"):
-                  break
-
-              if not inside_issues:
-                  continue
-
-              # Détection de la sévérité courante
-              sev_match = re.match(r'--- (LOW|MEDIUM|HIGH|CRITICAL) ---', line)
-              if sev_match:
-                  current_severity = sev_match.group(1)
-                  continue
-
-              # Description de la vulnérabilité
-              if line.startswith("- Description:"):
-                  current_description = line.replace("- Description:", "").strip()
-                  continue
-
-              # Fichier source impacté
-              if line.startswith("- Source:"):
-                  current_source = line.replace("- Source:", "").strip()
-
-                  # Création d’un identifiant unique interne
-                  vulnerabilities.append({
-                      "id": f"modelscan-{hash(current_source + current_description)}",
-                      "cve": f"modelscan-{hash(current_source + current_description)}",
-                      "file": current_source,
-                      "description": current_description,
-                      "severity": current_severity,
-                      "tool": "ModelScan"
-                  })
-
-                  # Réinitialisation pour la vulnérabilité suivante
-                  current_description = None
-                  current_source = None
-
-          # Structure finale du rapport JSON
-          output = {
-              "summary": {
-                  "total_vulnerabilities": len(vulnerabilities)
-              },
-              "vulnerabilities": vulnerabilities
-          }
-
-          with open(json_file, "w") as f:
-              json.dump(output, f, indent=2)
-
-          print(f"✅ ModelScan JSON réel généré : {json_file}")
-
-      # ---------------------------------------------------------
-      # Étape 5 : Archivage du rapport ModelScan
-      # ---------------------------------------------------------
-      - name: Upload ModelScan Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: modelscan-report-${{ env.TIMESTAMP }}
-          path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
-          retention-days: 30
-
+        # ---------------------------------------------------------
+        # Étape 5 : Archivage du rapport
+        # ---------------------------------------------------------
+        - name: Upload ModelScan Report
+          uses: actions/upload-artifact@v4
+          with:
+            name: modelscan-report-${{ env.TIMESTAMP }}
+            path: reports/models/${{ env.TIMESTAMP }}/official/modelscan-report.json
+            retention-days: 30
   # =============================================================
   # Job 4 : ContainerScan
   # Objectif :
