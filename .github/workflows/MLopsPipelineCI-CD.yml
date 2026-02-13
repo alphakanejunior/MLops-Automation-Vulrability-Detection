@@ -1,4 +1,4 @@
-# =============================================================
+# ==============================================================
 # Nom du workflow GitHub Actions
 # Ce workflow automatise la détection, l’enrichissement
 # et le reporting des vulnérabilités dans un pipeline MLOps
