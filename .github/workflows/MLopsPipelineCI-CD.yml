@@ -283,7 +283,7 @@ jobs:
             .venv/bin/modelscan scan -p ModelApp/model/ | tee "$REPORT_TXT"
 
             # Conversion TXT -> JSON structuré
-            .venv/bin/python3 - << 'PYTHON_CODE'
+            REPORT_TXT="$REPORT_TXT" REPORT_JSON="$REPORT_JSON" .venv/bin/python3 - << 'PYTHON_CODE'
             import json
             import os
             import re
