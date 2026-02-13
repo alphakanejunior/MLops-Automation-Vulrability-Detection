@@ -178,7 +178,7 @@ jobs:
 
           echo "✅ Trivy dependency scan finished"
 
-      # ---------------------------------------------------------
+      # ----------------------------------------------------------
       # Étape 4 : Installation des dépendances pour affichage
       # ---------------------------------------------------------
       - name: Install Python display dependencies
