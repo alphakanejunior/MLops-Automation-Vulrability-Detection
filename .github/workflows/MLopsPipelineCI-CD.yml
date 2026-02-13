@@ -181,10 +181,12 @@ jobs:
       # ----------------------------------------------------------
       # Étape 4 : Installation des dépendances pour affichage
       # ---------------------------------------------------------
-      - name: Install Python display dependencies
+      - name: Setup Python venv
         run: |
-          python3 -m pip install --upgrade pip
-          pip install tabulate
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       # ---------------------------------------------------------
       # Étape 5 : Affichage des vulnérabilités détectées
