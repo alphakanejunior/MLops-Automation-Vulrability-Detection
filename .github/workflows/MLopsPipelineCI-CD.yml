@@ -192,7 +192,7 @@ jobs:
       # ---------------------------------------------------------
       - name: Display Dependency Scan Results
         run: |
-         .venv/bin/python - python - << 'EOF'
+         .venv/bin/python << 'EOF'
           import json
           from tabulate import tabulate
 
