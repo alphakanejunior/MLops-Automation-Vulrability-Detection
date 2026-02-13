@@ -42,7 +42,7 @@ jobs:
   # =============================================================
   CodeScan:
     name: Code Security Scan (Bandit)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
 
     steps:
       # ---------------------------------------------------------
@@ -139,7 +139,7 @@ jobs:
   # =============================================================
   DependencyScan:
     name: Dependency Vulnerability Scan (Trivy)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     # Ce job ne démarre qu'après la réussite de CodeScan
     needs: [CodeScan]
 
@@ -243,7 +243,7 @@ jobs:
   # =============================================================
   ModelScan:
     name: Model Serialization Security Scan
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     # Ce job démarre après l’analyse des dépendances
     needs: DependencyScan
 
@@ -388,7 +388,7 @@ jobs:
   # =============================================================
   ContainerScan:
     name: Container Configuration Scan (Dockerfiles)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
 
     # Ce job ne démarre qu'après la validation des modèles ML
     needs: ModelScan
@@ -522,7 +522,7 @@ jobs:
   # =============================================================
   CVEEnrichment:
     name: Enrichissement CVE complet
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     needs:
       - CodeScan
       - DependencyScan
@@ -636,7 +636,7 @@ jobs:
   # =============================================================
   SecurityGate:
     name: Security Gate (CVE Policy)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     needs: CVEEnrichment
     if: github.ref == 'refs/heads/main'
 
@@ -687,7 +687,7 @@ jobs:
   # =============================================================
   DeployOnVM:
     name: Build & Deploy on Azure VM
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     needs: SecurityGate
     if: github.ref == 'refs/heads/main'
 
@@ -762,7 +762,7 @@ jobs:
 # =============================================================
   HealthCheck:
     name: Check Deployed Service Health
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     needs: DeployOnVM
     if: github.ref == 'refs/heads/main'
 
