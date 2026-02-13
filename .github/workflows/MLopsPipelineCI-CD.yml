@@ -192,7 +192,7 @@ jobs:
       # ---------------------------------------------------------
       - name: Display Dependency Scan Results
         run: |
-         .venv/bin/python << 'EOF'
+          .venv/bin/python << 'EOF'
           import json
           from tabulate import tabulate
 
@@ -223,6 +223,7 @@ jobs:
                   tablefmt="github"
               ))
           EOF
+
 
       # ---------------------------------------------------------
       # Étape 6 : Archivage du rapport Trivy
