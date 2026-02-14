@@ -7,7 +7,7 @@ tabulate==0.9.0
 requests==2.31.0
 
 
-les dépendances vulnérables ci-dessus sont nécessaires pour tester le workflow CI/CD de bout en bout. Cependant, voici une liste de dépendances supplémentaires qui sont souvent associées à des vulnérabilités et qui pourraient être utilisées pour tester la détection de vulnérabilités dans les pipelines CI/CD :
+# les dépendances vulnérables ci-dessus sont nécessaires pour tester le workflow CI/CD de bout en bout. Cependant, voici une liste de dépendances supplémentaires qui sont souvent associées à des vulnérabilités et qui pourraient être utilisées pour tester la détection de vulnérabilités dans les pipelines CI/CD :
 
 # Frameworks web
 # Django==2.2.10
