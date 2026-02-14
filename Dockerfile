@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # 6️ Vérifier que le dossier model existe
-RUN mkdir -p /app/ModelApp/model
+RUN python3 /app/ModelApp/main.py 
 
 # 7️ Changer les droits sur les fichiers pour mluser
 RUN chown -R mluser:mluser /app
