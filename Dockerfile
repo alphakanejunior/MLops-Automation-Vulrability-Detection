@@ -19,7 +19,7 @@ RUN chown -R mluser:mluser /app
 USER mluser
 
 # Entraîner le modèle (si tu veux que le modèle soit généré dans l'image)
-RUN python3 main.py
+RUN python3 ModelApp/main.py
 
 # Exposer le port de l'application
 EXPOSE 80
