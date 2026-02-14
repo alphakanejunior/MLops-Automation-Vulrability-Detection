@@ -18,9 +18,6 @@ COPY . .
 RUN chown -R mluser:mluser /app
 USER mluser
 
-# Entraîner le modèle (si tu veux que le modèle soit généré dans l'image)
-RUN python3 ModelApp/main.py
-
 # Exposer le port de l'application
 EXPOSE 80
 
@@ -28,5 +25,5 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl -f http://127.0.0.1:5000/ || exit 1
 
-# Commande pour démarrer l'application
-CMD ["python3", "app.py"]
+# Définir la commande par défaut
+CMD ["python3", "ModelApp/main.py"]
