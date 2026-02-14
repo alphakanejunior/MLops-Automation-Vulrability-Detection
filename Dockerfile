@@ -26,4 +26,4 @@ HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl -f http://127.0.0.1:5000/ || exit 1
 
 # Définir la commande par défaut
-CMD ["python3", "ModelApp/main.py"]
+CMD ["python3", "ModelApp/app.py"]
