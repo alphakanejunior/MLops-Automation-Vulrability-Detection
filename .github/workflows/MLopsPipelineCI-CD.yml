@@ -471,15 +471,15 @@ jobs:
             retention-days: 30
 
 
-  # =============================================================
-  # Job 5 : CVEEnrichment
-  # Objectif :
-  # - Corréler toutes les vulnérabilités détectées
-  # - Enrichir via la base officielle NVD (CVE)
-  # - Générer un rapport unifié
-  # =============================================================
+# =============================================================
+# Job 5 : CVEEnrichment (utilisation NVD locale)
+# Objectif :
+# - Corréler toutes les vulnérabilités détectées
+# - Enrichir via la base officielle NVD stockée localement sur le runner
+# - Générer un rapport unifié
+# =============================================================
   CVEEnrichment:
-    name: Enrichissement CVE complet
+    name: Enrichissement CVE complet (NVD locale)
     runs-on: [self-hosted, Linux, X64]
     needs:
       - CodeScan
@@ -490,12 +490,13 @@ jobs:
     steps:
       # ---------------------------------------------------------
       # Étape 1 : Récupération du dépôt
+      # - Nécessaire pour exécuter le script Python de corrélation
       # ---------------------------------------------------------
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------
-      # Étape 2 : Installation de Python
+      # Étape 2 : Configuration de Python
       # ---------------------------------------------------------
       - name: Configurer Python
         uses: actions/setup-python@v5
@@ -511,33 +512,7 @@ jobs:
           pip install requests tqdm tabulate
 
       # ---------------------------------------------------------
-      # Étape 4 : Téléchargement de la base NVD 2.0
-      # ---------------------------------------------------------
-      - name: Télécharger la base NVD 2.0 (2020-2025)
-        run: |
-          mkdir -p nvd_db
-          for YEAR in 2020 2021 2022 2023 2024 2025; do
-            FILE="nvd_db/nvdcve-2.0-${YEAR}.json.gz"
-            echo "⬇️ Téléchargement NVD $YEAR..."
-
-            # Retry jusqu'à 5 fois avec délai de 10 secondes
-            curl -L --retry 5 --retry-delay 10 --retry-max-time 120 \
-              "https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-${YEAR}.json.gz" \
-              -o "$FILE"
-
-            # Vérifier que le fichier n'est pas vide
-            if [ ! -s "$FILE" ]; then
-              echo "❌ Erreur: le fichier $FILE est vide ou corrompu"
-              exit 1
-            fi
-
-            gunzip -f "$FILE"
-          done
-          echo "✅ NVD 2.0 prête"
-
-
-      # ---------------------------------------------------------
-      # Étapes 5 à 8 : Téléchargement des rapports de scan
+      # Étapes 4 à 7 : Téléchargement des rapports de scan précédents
       # ---------------------------------------------------------
       - name: Télécharger les rapports Bandit
         uses: actions/download-artifact@v4
@@ -564,15 +539,16 @@ jobs:
           path: reports/container/${{ env.TIMESTAMP }}
 
       # ---------------------------------------------------------
-      # Étape 9 : Enrichissement CVE global
+      # Étape 8 : Enrichissement CVE global avec NVD locale
+      # - Plus besoin de téléchargement NVD
       # ---------------------------------------------------------
-      - name: Enrichissement CVE complet
+      - name: Enrichissement CVE complet (NVD locale)
         run: |
           OUTPUT_DIR="reports/cve_enrichment/${{ env.TIMESTAMP }}"
           mkdir -p "$OUTPUT_DIR"
 
           python scripts/cve_enrichment.py \
-            --nvd-db "nvd_db" \
+            --nvd-db "/home/runner/nvd_data" \
             --bandit-report "reports/bandit/${{ env.TIMESTAMP }}" \
             --trivy-report "reports/dependency/${{ env.TIMESTAMP }}" \
             --modelscan-report "reports/modelscan/${{ env.TIMESTAMP }}/official" \
@@ -580,7 +556,7 @@ jobs:
             --output "$OUTPUT_DIR/enriched_cves.json"
 
       # ---------------------------------------------------------
-      # Étape 10 : Archivage du rapport CVE enrichi final
+      # Étape 9 : Archivage du rapport CVE enrichi final
       # ---------------------------------------------------------
       - name: Uploader le rapport CVE enrichi complet
         uses: actions/upload-artifact@v4
