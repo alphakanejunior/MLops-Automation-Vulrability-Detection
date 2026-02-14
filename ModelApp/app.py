@@ -37,6 +37,9 @@ def predict_front():
     prediction = model.predict(vect)[0]
     return jsonify({"prediction": "SPAM ❌" if prediction == 1 else "HAM ✅"})
 
+@app.route("/health")
+def health_check():
+    return jsonify({"status": "ok"}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=80)
