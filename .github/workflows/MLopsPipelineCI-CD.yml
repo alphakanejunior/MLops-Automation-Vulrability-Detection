@@ -373,7 +373,7 @@ jobs:
         - name: Checkout repository
           uses: actions/checkout@v4
 
-        # ---------------------------------------------------------
+        # ----------------------------------------------------------
         # Étape 2 : Création et activation d'un venv + installation de tabulate
         # ---------------------------------------------------------
         - name: Setup Python virtual environment
