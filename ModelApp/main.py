@@ -4,7 +4,7 @@ from trainer import train_model, save_model
 
 
 if __name__ == "__main__":
-    dataset_path = "SMSSpamCollection"  # adapter si local
+    dataset_path = "ModelApp/SMSSpamCollection"  # adapter si local
 
     df = load_dataset(dataset_path)
     X_train, X_test, y_train, y_test, vectorizer = preprocess_dataset(df)
