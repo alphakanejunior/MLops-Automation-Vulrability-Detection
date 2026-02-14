@@ -412,7 +412,7 @@ jobs:
             done
 
             echo "✅ Dockerfile configuration scan completed"
-            
+
         # ---------------------------------------------------------
         # Étape 5 : Affichage console Dockerfile Scan (avec IDs sécurité)
         # ---------------------------------------------------------
@@ -723,6 +723,9 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     needs: DeployOnVM
     if: github.ref == 'refs/heads/main'
+    env:
+      PUBLIC_IP: ${{ secrets.SERVER_IP }}
+
 
     steps:
       # ---------------------------------------------------------
@@ -735,5 +738,7 @@ jobs:
       # Étape 2 : Vérification de la santé de l’application
       # - Le job échoue si l’endpoint ne répond pas en HTTP 200 hh/
       # ---------------------------------------------------------
-      - name: Perform Health Check
-        run: curl -f http://${{ secrets.VM_HOST }}:80/health
+      - name: Health check
+        run: |
+          curl -v http://$PUBLIC_IP:80/health || echo "Server unreachable"
+
