@@ -4,8 +4,8 @@ import joblib
 app = Flask(__name__)
 
 # Charger le modèle et le vectorizer
-model = joblib.load("/ModelApp/model/spam_model.pkl")
-vectorizer = joblib.load("/ModelApp/model/vectorizer.pkl")
+model = joblib.load("ModelApp/model/spam_model.pkl")
+vectorizer = joblib.load("ModelApp/model/vectorizer.pkl")
 
 
 # Route homepage
