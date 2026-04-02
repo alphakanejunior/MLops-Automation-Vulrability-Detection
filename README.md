@@ -1,5 +1,5 @@
 🔐 Secure MLOps Pipeline
-Automated Vulnerability Detection, Enrichment & Governance
+1 Automated Vulnerability Detection, Enrichment & Governance
 
 This project implements a fully automated DevSecOps pipeline for MLOps environments, designed to ensure that machine learning applications are secure before deployment.
 
