@@ -1,169 +1,297 @@
-🔐 Secure MLOps Pipeline
-1 Automated Vulnerability Detection, Enrichment & Governance
+# 🔐 Secure MLOps CI/CD Pipeline
 
-This project implements a fully automated DevSecOps pipeline for MLOps environments, designed to ensure that machine learning applications are secure before deployment.
+## Automatisation de la gestion des vulnérabilités dans les pipelines MLOps
 
-The pipeline integrates multiple security layers to:
+---
 
-Detect vulnerabilities across code, dependencies, models, and containers
-Enrich findings using NVD (National Vulnerability Database)
-Correlate heterogeneous security results
-Enforce security policies automatically
-Prevent insecure deployments
-Enable secure, traceable CI/CD workflows
-🚀 Key Features
-🔍 Multi-layer vulnerability scanning
-🧠 CVE enrichment using local NVD database
-🔗 Cross-tool correlation (Bandit, Trivy, ModelScan)
-🚫 Automated Security Gate (fail on critical issues)
-🐳 Secure container build & deployment
-📊 Versioned security reports
-⚙️ Self-hosted runner compatibility
-🔁 Fully automated CI/CD pipeline
+## 📌 Description du projet
 
-🏗️ Pipeline Architecture
-CodeScan
-   ↓
-DependencyScan
-   ↓
-ModelScan
-   ↓
-ContainerScan
-   ↓
-CVEEnrichment
-   ↓
-SecurityGate (main branch only)
-   ↓
-DeployOnVM
-   ↓
-HealthCheck
-⚙️ Workflow Execution
-🔁 Triggers
+Dans un contexte où les applications de Machine Learning sont déployées en production, la sécurité des pipelines MLOps devient essentielle. Contrairement aux applications classiques, les pipelines MLOps introduisent des risques supplémentaires liés aux modèles, aux dépendances et aux environnements d’exécution.
 
-The pipeline is triggered on:
+Ce projet met en place un pipeline **CI/CD sécurisé**, basé sur une approche **DevSecOps**, permettant d’automatiser la détection, l’analyse et la gestion des vulnérabilités.
 
-push to Develop and main
-pull_request targeting Develop and main
-🔐 Security Stages
-1. CodeScan – Static Application Security Testing (SAST)
-Tool: Bandit
-Scans Python source code for:
-Insecure coding practices
-Potential vulnerabilities
-Outputs structured JSON reports
-2. DependencyScan – Open Source Vulnerability Detection
-Tool: Trivy (Filesystem mode)
-Detects:
-Known CVEs in dependencies
-Vulnerable package versions
-3. ModelScan – ML Model Security
-Tool: ModelScan
-Identifies:
-Unsafe serialization patterns
-Model-level vulnerabilities
-Converts output into normalized JSON format
-4. ContainerScan – Infrastructure as Code Security
-Tool: Trivy Config
-Scans Dockerfiles for:
-Misconfigurations
-Security anti-patterns
-Hardcoded secrets
-Unsafe permissions
-5. CVEEnrichment – Centralized Intelligence Layer
+L’objectif est d’intégrer une **prise de décision automatisée (Security Gate)** afin de bloquer tout déploiement contenant des vulnérabilités critiques.
 
-This stage is the core of the pipeline.
+---
 
-Responsibilities:
-Aggregate all scan results
-Normalize heterogeneous formats
-Enrich vulnerabilities using local NVD database
-Assign severity and context
-Generate a unified report
-Output:
-reports/cve_enrichment/<run_id>/enriched_cves.json
-🚫 Security Gate Policy
+## 🎯 Problématique
 
-Executed only on main branch
+Dans les pipelines MLOps traditionnels :
 
-The pipeline enforces a strict security rule:
+* les outils de sécurité sont isolés
+* les résultats ne sont pas corrélés
+* aucune décision automatique n’est prise
 
-❌ Any CRITICAL vulnerability blocks deployment
+Cela rend la gestion des vulnérabilités inefficace.
 
-Evaluated Domains:
-Source code vulnerabilities
-Dependency CVEs
-ML model issues
-Container misconfigurations
-Result:
-✅ No critical issues → Deployment allowed
-❌ Critical issues found → Pipeline fails
-🚀 Deployment Strategy
+👉 Ce projet propose une solution unifiée, automatisée et décisionnelle.
 
-Deployment is performed on an Azure Virtual Machine via SSH.
+---
 
-Steps:
-Repository synchronization
-Docker image build
-Container image vulnerability scan (Trivy)
-Deployment condition:
-No CRITICAL vulnerabilities
-Container restart
-Application exposure on port 80
-❤️ Health Check
+## 🧩 Architecture du pipeline
 
-Post-deployment validation:
+```bash
+CodeScan → DependencyScan → ModelScan → ContainerScan → CVEEnrichment → SecurityGate → Deploy → HealthCheck
+```
 
-GET /health
-Ensures service availability
-Fails pipeline if unreachable
-📊 Reports & Traceability
+---
 
-Each pipeline run is uniquely identified using:
+## 🔍 Analyse de sécurité multi-couches
 
-TIMESTAMP = github.run_id
-Generated Reports:
-Stage	Output Path
-Bandit	reports/bandit/<id>/
-Trivy (deps)	reports/dependency/<id>/
-ModelScan	reports/models/<id>/
-ContainerScan	reports/container/<id>/
-CVE Enrichment	reports/cve_enrichment/<id>/
+Le pipeline implémente une approche multi-niveaux couvrant toutes les surfaces d’attaque.
 
-✔️ Enables:
+### 1. Analyse du code (SAST)
 
-Auditability
-Historical tracking
-Security compliance
-🧰 Prerequisites
-Self-Hosted Runner
-Linux (x64)
-Python 3.11
-Docker
-Trivy installed (or installable)
-Access to local NVD database:
-/home/runner/nvd_data
-🔐 Configuration
-Required GitHub Secrets
-VM_HOST
-VM_USER
-VM_SSH_KEY
-SERVER_IP
-📁 Project Structure
+Le code Python est analysé avec Bandit afin d’identifier les failles de sécurité et les mauvaises pratiques.
+
+### 2. Analyse des dépendances
+
+Les dépendances sont scannées avec Trivy pour détecter les vulnérabilités connues (CVE).
+
+### 3. Analyse des modèles ML
+
+Les modèles sont analysés avec ModelScan afin de détecter les risques liés à la désérialisation.
+
+### 4. Analyse des conteneurs
+
+Les Dockerfiles sont scannés pour identifier les mauvaises configurations de sécurité.
+
+---
+
+## 🧠 Enrichissement des vulnérabilités
+
+Les résultats des scans sont ensuite corrélés et enrichis via une base locale **NVD**.
+
+Cela permet d’ajouter :
+
+* score CVSS
+* niveau de criticité
+* informations CVE standardisées
+
+---
+
+## 🚫 Security Gate
+
+Une règle de sécurité est appliquée :
+
+* ❌ présence de vulnérabilité CRITICAL → pipeline bloqué
+* ✅ sinon → déploiement autorisé
+
+---
+
+## 🚀 Déploiement sécurisé
+
+Le déploiement est effectué automatiquement via SSH sur une VM, uniquement si le pipeline est validé.
+
+---
+
+## ❤️ Health Check
+
+Après déploiement :
+
+```bash
+curl http://<SERVER_IP>/health
+```
+
+---
+
+## 📁 Structure du projet
+
+```bash
 .
 ├── .github/workflows/
-│   └── pipeline.yml
-├── scripts/
-│   └── cve_enrichment.py
 ├── ModelApp/
-│   └── model/
-├── reports/
-└── README.md
-🔮 Future Improvements
-📊 Security dashboards (Grafana / Kibana)
-📈 Risk scoring engine
-📩 Alerting system (Slack, Email)
-🧠 AI-based vulnerability prioritization
-🔄 Continuous compliance checks
-🎯 Conclusion
+├── scripts/
+├── test/
+├── Dockerfile
+├── requirements.txt
+```
 
-This project demonstrates how to transform a traditional CI/CD pipeline into a secure, intelligent, and decision-driven MLOps pipeline.
+---
+
+# ⚙️ Configuration complète
+
+---
+
+## 🖥 1. Setup du Self-Hosted Runner
+
+Le pipeline s’exécute sur une VM via un runner GitHub self-hosted.
+
+### Installation
+
+```bash
+# Créer dossier
+mkdir actions-runner && cd actions-runner
+
+# Télécharger
+curl -o actions-runner.tar.gz -L https://github.com/actions/runner/releases/latest/download/actions-runner-linux-x64.tar.gz
+
+# Extraire
+tar xzf actions-runner.tar.gz
+
+# Configurer
+./config.sh --url https://github.com/<OWNER>/<REPO> --token <TOKEN>
+
+# Lancer
+./run.sh
+```
+
+### Mode service (recommandé)
+
+```bash
+sudo ./svc.sh install
+sudo ./svc.sh start
+```
+
+---
+
+## 🔐 2. Configuration des GitHub Secrets
+
+Dans GitHub :
+
+**Settings → Secrets and variables → Actions**
+
+Ajouter :
+
+```bash
+VM_HOST=xxx.xxx.xxx.xxx
+VM_USER=azureuser
+VM_SSH_KEY=<clé privée>
+SERVER_IP=xxx.xxx.xxx.xxx
+```
+
+---
+
+## 🔑 Génération clé SSH
+
+```bash
+ssh-keygen -t rsa -b 4096
+```
+
+```bash
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+```
+
+---
+
+## 🖥 3. Préparation de la VM
+
+### Installation des dépendances
+
+```bash
+sudo apt update -y
+sudo apt install -y docker.io git curl
+```
+
+### Activer Docker
+
+```bash
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker $USER
+```
+
+(Reconnexion nécessaire)
+
+---
+
+## 🔍 Installation de Trivy
+
+```bash
+sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+
+echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
+
+sudo apt-get update -y
+sudo apt-get install -y trivy
+```
+
+---
+
+## 🧠 Base NVD locale
+
+```bash
+mkdir -p /home/runner/nvd_data
+```
+
+---
+
+## 🌐 Ports nécessaires
+
+```bash
+# Autoriser ports
+sudo ufw allow 22
+sudo ufw allow 80
+```
+
+---
+
+## 🚀 Déploiement manuel (test)
+
+```bash
+# Build image
+docker build -t mlapp:latest .
+
+# Run container
+docker run -d -p 80:80 mlapp:latest
+```
+
+---
+
+## 🔐 Scan sécurité Docker
+
+```bash
+trivy image mlapp:latest
+```
+
+---
+
+## 📦 Exemple de scan dépendances
+
+```bash
+trivy fs .
+```
+
+---
+
+## 📊 Résultat final
+
+Ce pipeline permet :
+
+* ✔ détection automatique des vulnérabilités
+* ✔ corrélation et enrichissement CVE
+* ✔ blocage des risques critiques
+* ✔ déploiement sécurisé automatisé
+
+---
+
+## 🧠 Bonnes pratiques appliquées
+
+* DevSecOps
+* Shift-left security
+* Zero Trust deployment
+* Infrastructure as Code security
+
+---
+
+## 🎯 Objectif
+
+Fournir un pipeline :
+
+* sécurisé
+* automatisé
+* prêt pour production
+
+---
+
+## ⭐ Conclusion
+
+Ce projet représente une implémentation complète d’un pipeline **MLOps sécurisé**, combinant :
+
+* analyse multi-couches
+* automatisation CI/CD
+* gouvernance sécurité
+
+👉 Une solution robuste adaptée aux environnements professionnels.
