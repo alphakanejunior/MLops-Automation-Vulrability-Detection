@@ -578,7 +578,7 @@ jobs:
           fi
 
           echo "📄 Using report: $REPORT"
-           python - << EOF
+           python3 - << EOF
           import json
           import sys
 
