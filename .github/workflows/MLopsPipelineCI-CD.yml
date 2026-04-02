@@ -150,28 +150,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------------------------------------------------------
-      # Étape 2 : Installation de Trivy
-      # ---------------------------------------------------------
-      - name: Install Trivy (Official - FINAL)
-        run: |
-          set -e
-
-          echo "📦 Installing Trivy..."
-
-          sudo apt-get update -y
-          sudo apt-get install -y wget gnupg lsb-release apt-transport-https
-
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-
-          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | \
-          sudo tee /etc/apt/sources.list.d/trivy.list
-
-          sudo apt-get update -y
-          sudo apt-get install -y trivy
-
-          echo "✅ Installed version:"
-          trivy --version
+   
 
       # ---------------------------------------------------------
       # Étape 3 : Scan des dépendances du projet
