@@ -153,23 +153,25 @@ jobs:
       # ---------------------------------------------------------
       # Étape 2 : Installation de Trivy
       # ---------------------------------------------------------
-      - name: Install Trivy (Fixed)
-        run: |
-          set -e
+          - name: Install Trivy (Official - FINAL)
+            run: |
+              set -e
 
-          TRIVY_VERSION="0.50.2"
+              echo "📦 Installing Trivy..."
 
-          echo "📥 Downloading Trivy..."
-          wget https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+              sudo apt-get update -y
+              sudo apt-get install -y wget gnupg lsb-release apt-transport-https
 
-          echo "📦 Extracting..."
-          tar -xzf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+              wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
 
-          echo "🚀 Installing..."
-          sudo mv trivy /usr/local/bin/
+              echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | \
+              sudo tee /etc/apt/sources.list.d/trivy.list
 
-          echo "✅ Version:"
-          trivy --version
+              sudo apt-get update -y
+              sudo apt-get install -y trivy
+
+              echo "✅ Installed version:"
+              trivy --version
 
       # ---------------------------------------------------------
       # Étape 3 : Scan des dépendances du projet
