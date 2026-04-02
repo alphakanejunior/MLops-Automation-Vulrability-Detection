@@ -153,16 +153,22 @@ jobs:
       # ---------------------------------------------------------
       # Étape 2 : Installation de Trivy
       # ---------------------------------------------------------
-      - name: Install Trivy
+      - name: Install Trivy (Fixed)
         run: |
           set -e
 
           TRIVY_VERSION="0.50.2"
 
-          wget https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb
+          echo "📥 Downloading Trivy..."
+          wget https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
 
-          sudo dpkg -i trivy_${TRIVY_VERSION}_Linux-64bit.deb || sudo apt-get install -f -y
+          echo "📦 Extracting..."
+          tar -xzf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
 
+          echo "🚀 Installing..."
+          sudo mv trivy /usr/local/bin/
+
+          echo "✅ Version:"
           trivy --version
 
       # ---------------------------------------------------------
