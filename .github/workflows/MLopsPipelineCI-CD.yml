@@ -375,15 +375,6 @@ jobs:
             pip install --upgrade pip
             pip install tabulate
 
-        # ---------------------------------------------------------
-        # Étape 3 : Installation de Trivy
-        # ---------------------------------------------------------
-        - name: Install Trivy
-          run: |
-            TRIVY_VERSION="0.68.2"
-            wget -q https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb
-            sudo dpkg -i trivy_${TRIVY_VERSION}_Linux-64bit.deb
-            trivy --version
 
         # ---------------------------------------------------------
         # Étape 4 : Scan Dockerfiles
